@@ -119,13 +119,13 @@ async function syncMessages(
 
 export async function runJobASyncSessions(options: SyncSessionsOptions = {}): Promise<void> {
   const tenantId = options.tenantId || env.DEFAULT_TENANT_ID;
-  const client = new FlwClient();
   const runStartedAt = new Date();
 
   console.log(`[Job A] Iniciando sincronização de sessões para o tenant: ${tenantId}`);
 
   // 1. Tenant atualizado a partir do .env
   const tenant = await ensureTenant(tenantId);
+  const client = new FlwClient({ token: tenant.token || undefined });
 
   // 2. Agentes
   try {

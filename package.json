@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Sistema de qualidade de conversas FLW Chat com métricas sintéticas e análise com IA",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/cli.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/cli.ts",
@@ -13,7 +13,7 @@
     "web:start": "next start -H 127.0.0.1 -p 3000",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:push": "prisma db push",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "job:sync": "tsx src/cli.ts sync",
     "job:cards": "tsx src/cli.ts cards",
@@ -21,6 +21,9 @@
     "job:stage1": "tsx src/cli.ts stage1",
     "job:report": "tsx src/cli.ts report",
     "pipeline": "tsx src/cli.ts pipeline",
+    "daily": "tsx src/cli.ts daily",
+    "publish:weekly": "tsx src/cli.ts publish:weekly",
+    "config:lost-reasons": "tsx src/cli.ts config:lost-reasons",
     "seed": "tsx src/seed-demo.ts",
     "test": "vitest run"
   },

@@ -65,6 +65,9 @@ export async function loadReports(periodStart?: string): Promise<ReportItem[]> {
         textoOps: (r.textoOps as any[] | null) ?? null,
         model: r.model,
         promptVersionSintese: r.promptVersionSintese,
+        comparativo: (r.comparativo as any) ?? null,
+        correctedAt: r.correctedAt ? r.correctedAt.toISOString() : null,
+        correctionReason: r.correctionReason,
       };
     })
     .sort((a, b) => {

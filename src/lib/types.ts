@@ -38,6 +38,15 @@ export interface FunnelData {
   desconsideradas?: { foraDoControle: number; higienizacao: number };
 }
 
+export interface Comparativo {
+  periodoAnterior: { start: string; end: string };
+  notaAnteriorRecalculada: number;
+  deltaNota: number;
+  mediasAnteriores: Record<string, number | null>;
+  deltaMedias: Record<string, number | null>;
+  nAnterior: number;
+}
+
 export interface ReportItem {
   id: string;
   title: string;
@@ -58,6 +67,9 @@ export interface ReportItem {
   textoOps: AiInsight[] | null;
   model?: string | null;
   promptVersionSintese?: string | null;
+  comparativo?: Comparativo | null;
+  correctedAt?: string | null;
+  correctionReason?: string | null;
 }
 
 export interface MessageItem {

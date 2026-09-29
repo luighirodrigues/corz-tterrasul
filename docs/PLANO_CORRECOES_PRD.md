@@ -8,6 +8,58 @@ Lista de todas as mudanças necessárias para a plataforma seguir o `docs/PRD_QU
 
 ---
 
+## Status da execução (branch `fase-2-sync-calculos`)
+
+Implementado no código, com `tsc` limpo, 93 testes passando e `next build` OK. **Nada foi validado contra Postgres, FLW ou OpenAI reais**: o banco estava desligado. O que exige banco (imutabilidade, sync, fila, migrations aplicadas) tem lógica coberta por testes de funções puras, mas precisa de uma rodada real.
+
+| ID | Situação | Observação |
+|----|----------|------------|
+| M01 | Feito | `--week`, `--dry-run`, janela no fuso do tenant (`src/domain/period.ts`) |
+| M02 | Feito | `create` só; `--correct --reason` guarda revisão |
+| M03 | Feito | trava do §16 + `--allow-incomplete` |
+| M04 | Feito | sem dado inventado; seed no tenant `demo`. **Falta conferir no banco real** se o seed antigo gravou lixo (consultas SQL na M04) |
+| M05 | Feito | anonimização na API, no modal e no estágio 1/2; Basic Auth via `src/proxy.ts` |
+| M06 | Feito | incremental por `UpdatedAt`; 1ª carga com `--from` ou `GO_LIVE_AT`. **Validar** se o `updatedAt` da sessão muda com mensagem nova |
+| M07 | Feito | mensagens só do delta; áudio em processamento reagenda |
+| M08 | Feito | checkpoint por página e `--resume` no Job A |
+| M09 | Feito | `LostReason` e cards incrementais. **Validar** o formato real de `lostReason` na resposta |
+| M10 | Feito | ID ou título exato; falha listando os painéis |
+| M11 | Feito | `sem esteira` na tela e nos relatórios |
+| M12 | Feito | só `origin = DEFAULT` é humano (D3: `API` = automática) |
+| M13 | Feito | base de datas por métrica |
+| M14 | Feito | nota só entre conversas com nota |
+| M15 | Feito | KPIs de divisão com os 2 painéis |
+| M16 | Feito | critério indisponível (D4: 30%) |
+| M17 | Feito | D2 aplicada; `null` sem dado |
+| M18 | Parcial | listas exatas + `config:lost-reasons`. **Falta definir o card automático da oficina (D7)** |
+| M19 | Feito | `stage1-v2`, nota inteira, `temperature 0`, timeout |
+| M20 | Feito | transcript JSON com data local e nota interna |
+| M21 | Feito | corte do meio com estimativa de tokens (`caracteres/3,5`, sem `js-tiktoken`) |
+| M22 | Feito | precisa dos preços em `OPENAI_PRICE_*`; sem eles o teto não se aplica (avisa) |
+| M23 | Feito | fila sem `skipped`, backoff, lotes de 25, `--since/--session/--force` |
+| M24 | Feito | a IA não escreve número; o código preenche e valida |
+| M25 | Feito | sem "áudio sem transcrição" e "transferência" por escopo (o dado é gravado, falta agregar) |
+| M26 | Feito | `comparativo` na linha de N, série em `/api/reports/history`, seta e gráfico |
+| M27 | Parcial | falta: auditoria com `skipped`/`error` e filtro de período em `/api/sessions` |
+| M28 | Feito offline | `0_init` + `1_alinhamento_prd` geradas por `migrate diff`, só aditivas |
+| M29 | Parcial | 93 testes. Faltam os que precisam de banco: `immutability`, `sessions-api` |
+| M30 | Feito | cliente FLW usa o token do tenant |
+| M31 | Parcial | feito `config:lost-reasons`. Faltam departamentos, etapas do painel (ordem do funil) e notas |
+| M32 | Feito | `daily`, `publish:weekly` e trava de concorrência (lock no Postgres) |
+| M33 | Parcial | `main` corrigido; grupo pulado no Job D; falta ignorar `HIDDEN`/`UNDEFINED` nos sintéticos |
+
+**Passos manuais antes da primeira leva real** (nesta ordem):
+1. Subir o Postgres e fazer backup.
+2. Banco já existente (criado por `db push`): `npx prisma migrate resolve --applied 0_init` e depois `pnpm prisma:deploy`. Banco novo: só `pnpm prisma:deploy`.
+3. Conferir o seed antigo (SQL na M04) e limpar se houver lixo.
+4. Preencher no `.env`: `GO_LIVE_AT`, `PANEL_*_TITLE` (ou IDs), `REPORT_BASIC_AUTH_*`, `OPENAI_PRICE_*`.
+5. `pnpm config:lost-reasons` e preencher `IGNORED_LOST_REASONS` / `HYGIENE_LOST_REASONS`.
+6. Primeira carga: `pnpm job:sync -- --from <go-live>`; depois `pnpm daily` todo dia e `pnpm publish:weekly` na quinta.
+7. Antes de publicar de verdade, rodar `pnpm job:report -- --dry-run` e ler o rascunho em `reports/rascunho/`.
+8. Os relatórios antigos em `reports/` (18/09) foram gerados com a lógica antiga e não valem.
+
+---
+
 ## Sumário
 
 - [Como ler este documento](#como-ler-este-documento)

@@ -1,5 +1,6 @@
 import React from "react";
 import type { KpiMetrics } from "@/lib/types";
+import { SEM_RESPOSTA_ALERT_PCT } from "@/lib/thresholds";
 import { Clock, CheckCircle2, AlertTriangle, TrendingUp, RefreshCw, Zap } from "lucide-react";
 
 interface KpiStripProps {
@@ -7,7 +8,7 @@ interface KpiStripProps {
 }
 
 export const KpiStrip: React.FC<KpiStripProps> = ({ metrics }) => {
-  const isHighVacuum = (metrics.semRespostaPct ?? 0) > 30;
+  const isHighVacuum = (metrics.semRespostaPct ?? 0) > SEM_RESPOSTA_ALERT_PCT;
   const fmt = (v: number | null | undefined) => (v == null ? "N/D" : `${v.toFixed(1)}%`);
 
   return (

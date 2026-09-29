@@ -81,3 +81,15 @@ describe("pickCases", () => {
     expect(pickCases([none(), row([5, 5, 5, 5, 5], "")], CRITERIA)).toEqual([]);
   });
 });
+
+describe("aggregateQuality - forceAvailable (semana anterior com a mesma régua)", () => {
+  it("usa o mesmo conjunto de critérios da semana atual, mesmo que na anterior ele tivesse cobertura", () => {
+    const rows = Array(10).fill(0).map(() => row([8, 8, 8, 2, 8])); // proximoPasso cobre 100% e puxa para baixo
+    const semRegua = aggregateQuality(rows, opts(10));
+    expect(semRegua.notaGeral).toBe(6.8);
+    const comRegua = aggregateQuality(rows, { ...opts(10), forceAvailable: ["atrito", "solucao", "necessidade", "resolvida"] });
+    expect(comRegua.notaGeral).toBe(8);
+    expect(comRegua.medias.proximoPasso).toBeNull();
+    expect(comRegua.criteriosIndisponiveis).toEqual(["proximoPasso"]);
+  });
+});

@@ -261,6 +261,7 @@ model PeriodReport {
   promptVersionSintese String? @map("prompt_version_sintese")
   model               String?
   publishedAt         DateTime @default(now()) @map("published_at")
+  comparativo         Json?     // evolução vs semana anterior recalculada (só para a seta)
   correctedAt         DateTime? @map("corrected_at")
   correctionReason    String?   @map("correction_reason")
 

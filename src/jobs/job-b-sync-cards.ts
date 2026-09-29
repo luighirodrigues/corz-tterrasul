@@ -24,7 +24,6 @@ export function parseLostReason(v: FlwPanelCardDTO["lostReason"]): { id: string 
 
 export async function runJobBSyncCards(options: SyncCardsOptions = {}): Promise<void> {
   const tenantId = options.tenantId || env.DEFAULT_TENANT_ID;
-  const client = new FlwClient();
   const runStartedAt = new Date();
   const statuses = options.statuses || ["OPEN", "WON", "LOST"];
 
@@ -32,6 +31,7 @@ export async function runJobBSyncCards(options: SyncCardsOptions = {}): Promise<
 
   // 1. Tenant atualizado a partir do .env e IDs dos 4 painéis (ID configurado > título exato)
   const tenant = await ensureTenant(tenantId);
+  const client = new FlwClient({ token: tenant.token || undefined });
 
   const panelKeys = [
     { key: "vendas", name: "Vendas", current: tenant.panelVendasId },

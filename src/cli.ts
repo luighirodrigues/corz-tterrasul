@@ -9,6 +9,8 @@ import { exportReportHtml } from "./report/html-reporter.js";
 import { ensureTenant } from "./domain/tenant.js";
 import { lastClosedPeriod, periodContaining, type Period } from "./domain/period.js";
 import { resolveScopeTitle } from "./domain/scope-title.js";
+import { withAdvisoryLock } from "./domain/lock.js";
+import { FlwClient } from "./flw/flw-client.js";
 
 function argValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -96,10 +98,7 @@ async function publishPeriod(tenantId: string, args: string[], period: Period): 
   }
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0] || "help";
-
+async function run(command: string, args: string[]) {
   const tenantId = env.DEFAULT_TENANT_ID;
 
   switch (command) {
@@ -140,6 +139,38 @@ async function main() {
       break;
     }
 
+    case "daily": {
+      console.log("=== ROTINA DIÁRIA: SYNC INCREMENTAL + IA ESTÁGIO 1 ===");
+      await runJobASyncSessions({ tenantId });
+      await runJobBSyncCards({ tenantId });
+      await runJobDStage1Analysis({ tenantId });
+      break;
+    }
+
+    case "config:lost-reasons": {
+      console.log("=== MOTIVOS DE PERDA CADASTRADOS NOS PAINÉIS ===");
+      const tenant = await ensureTenant(tenantId);
+      const client = new FlwClient({ token: tenant.token || undefined });
+      const panels = [
+        ["Vendas", tenant.panelVendasId],
+        ["Campanhas", tenant.panelCampanhasId],
+        ["Peças", tenant.panelPecasId],
+        ["Oficina", tenant.panelOficinaId],
+      ] as const;
+      for (const [name, id] of panels) {
+        if (!id) {
+          console.log(`\n${name}: painel não resolvido (rode "job:cards" uma vez ou configure PANEL_*_ID).`);
+          continue;
+        }
+        const reasons = await client.listPanelLostReasons(id);
+        console.log(`\n${name} (${id}):`);
+        for (const r of reasons) console.log(`  - ${r.name}`);
+      }
+      console.log("\nCopie os nomes EXATOS para IGNORED_LOST_REASONS (fora do controle) e HYGIENE_LOST_REASONS (higienização).");
+      break;
+    }
+
+    case "publish:weekly":
     case "report": {
       console.log("=== IA ESTÁGIO 2 & RELATÓRIOS DO PERÍODO (JOB E) ===");
       const period = await resolveReportPeriod(tenantId, args);
@@ -179,6 +210,9 @@ Comandos:
   job:stage1      Análise de IA por sessão (Job D)     [--limit N | --since YYYY-MM-DD | --session ID | --force]
   job:report      Publica os relatórios da janela (Job E)
   pipeline        Sync + IA + relatório da janela
+  daily           Rotina diária: sync incremental + IA estágio 1 (agende de madrugada)
+  publish:weekly  Publica a última janela encerrada (agende na quinta de manhã)
+  config:lost-reasons  Lista os motivos de perda dos painéis para configurar o .env
 
 Opções do report/pipeline:
   --week YYYY-MM-DD      Qualquer data dentro da semana-alvo (padrão: última janela encerrada)
@@ -191,7 +225,11 @@ Opções do report/pipeline:
   }
 }
 
-main()
+const argv = process.argv.slice(2);
+const command = argv[0] || "help";
+
+// Só um job por vez (evita chamadas duplicadas à FLW e à OpenAI). A ajuda não precisa de banco.
+(command === "help" || !argv.length ? run(command, argv) : withAdvisoryLock("flw-quality", () => run(command, argv)))
   .catch((err) => {
     console.error("Erro na execução do CLI:", err.message ?? err);
     process.exit(1);

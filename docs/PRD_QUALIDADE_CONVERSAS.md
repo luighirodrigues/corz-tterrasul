@@ -81,16 +81,20 @@ Calculadas no Postgres a partir de sessão + mensagens + card. Podem usar conver
 
 | KPI (Pry) | Definição | Como calcular | Fonte FLW |
 |-----------|-----------|---------------|-----------|
-| **TMR médio** | Tempo médio até a primeira resposta humana | `firstResponseAt − startAt`, ou gaps TO_HUB → FROM_HUB com `origin != BOT` | `GET /v2/session` + mensagens |
+| **TMR médio** | Tempo médio até a primeira resposta humana | Da 1ª fala do cliente (`TO_HUB`) até a 1ª **resposta humana** (definição abaixo). `firstResponseAt − startAt` só quando a thread não está no espelho (declarado em `limitacoes`) | `GET /v2/session` + mensagens |
 | **FTR mediana** | Mediana do tempo até fechar o atendimento | Mediana de `endAt − startAt` (ou `timeService`) em `COMPLETED` | `GET /v2/session` |
 | **Resp. cliente** | Complemento de sem resposta | `1 − % sem resposta` | derivado |
-| **Sem resposta** | % de conversas/clientes em que o cliente falou e não houve resposta humana | `firstResponseAt` nulo, ou `lastMessageIn` depois de `lastMessageOut`; deduplicar `contactId` se a unidade for cliente | sessão |
+| **Sem resposta** | % de conversas/clientes em que o cliente falou e não houve resposta humana | O cliente escreveu e (a) nunca houve resposta humana depois da 1ª fala dele, ou (b) a sessão **não** está `COMPLETED` e a última fala do cliente é posterior à última fala humana. Uma `COMPLETED` que termina com “ok, obrigado” do cliente **não** conta | sessão |
 | **Prob. / taxa de fechamento** | No v1: **taxa realizada** de card `WON` no recorte, não modelo preditivo | `WON / (OPEN + WON + LOST)` no painel; `classification.category = WON` é apoio se o card faltar | `GET /v2/panel/card` |
-| **Reativação** | % de conversas não concluídas (ou no período) em que, após ≥ 24h sem interação, a próxima mensagem é `FROM_HUB` | Timeline ordenada por `timestamp` | `GET /v1/session/{id}/message` |
+| **Reativação** | % de conversas não concluídas (ou no período) em que, após ≥ 24h sem interação, a próxima mensagem é **humana** | Timeline ordenada por `timestamp` | `GET /v1/session/{id}/message` |
 
 `RESP. CLIENTE` na Pry (79%) + `SEM RESPOSTA` (21%) somam 100: não é métrica nova.
 
-Outbound iniciado pela loja: não confiar só em `timeWait` (regra Tterrasul). Usar a thread.
+Outbound iniciado pela loja: não confiar só em `timeWait` (regra Tterrasul). Usar a thread. Atendimento iniciado pela loja (sem fala do cliente) não tem TMR nem entra em “sem resposta”.
+
+**Mensagem humana (decisão travada).** É a mensagem `FROM_HUB` com `origin = DEFAULT`, de tipo de conversa (não `NOTE`, `TRANSITION` nem `TRACK`) e status não falho (`FAILED`/`DELETED`). As demais origens da FLW (`BOT`, `OFFICE_HOURS`, `CAMPAIGN`, `PAYMENT`, `GATEWAY`, `API`) são **automáticas** e nunca contam como resposta nem como reativação. `API` é tratada como automática até confirmar que nenhum atendente envia por integração. Nota interna (`NOTE`) é anotação que o cliente não vê.
+
+**Sem dado, não há número.** Quando o recorte não tem base para calcular, o KPI é `null` (“N/D”), nunca `0%` ou `100%`.
 
 ### 6.2 Analíticas (entram no anel)
 
@@ -108,6 +112,24 @@ Nota da conversa = média aritmética dos critérios com valor (ignora `nao_se_a
 Nota da pessoa / painel / período = média das notas das conversas daquele recorte (calculada do zero na janela).
 
 Pesos v1: **20% cada**. Se um critério for `nao_se_aplica` em massa e ficar indisponível na leva, redistribuir os outros e recalcular a semana anterior com a mesma regra.
+
+---
+
+### 6.3 Base de datas por métrica
+
+| Métrica | Sessões consideradas |
+|---------|----------------------|
+| Qualidade (anel, barras, histograma, estágio 2) | `status = COMPLETED` e `endAt` na janela |
+| FTR mediana | `status = COMPLETED` e `endAt` na janela |
+| TMR, sem resposta, reativação | `startAt` na janela, qualquer status (métrica operacional) |
+| Fechamento e funil | cards com `flwCreatedAt` na janela, com o **status atual** do card (sem webhook não há histórico de etapa; declarado em `limitacoes`) |
+| Atendentes com relatório | ≥1 sessão `COMPLETED` encerrada na janela **ou** iniciada nela |
+
+A nota do recorte é a média das notas das conversas **com nota**: conversa em que nenhum critério se aplica não entra na média. Recorte sem nenhuma conversa com nota tem nota `null` (“—”), não `0`. `preliminar` vale para menos de 10 conversas **com nota**.
+
+**Critério indisponível na leva.** Critério aplicável em menos de `CRITERION_MIN_COVERAGE` (padrão 30%) das conversas do recorte sai da nota e das médias; a nota de cada conversa é recalculada só com os critérios disponíveis, e o motivo vai para `limitacoes`. A semana anterior é recalculada com o **mesmo** conjunto de critérios.
+
+**Motivos de perda.** As listas `IGNORED_LOST_REASONS` (fora do controle) e `HYGIENE_LOST_REASONS` (higienização) casam pelo **nome exato** do motivo (sem acento e caixa), nunca por trecho, e ficam fora do denominador do fechamento. Padrão: vazias.
 
 ---
 
@@ -153,9 +175,9 @@ Não estava listada de forma explícita; fica travada aqui. Alinha com o padrão
 | Validação | **Zod** | Conferir o JSON da OpenAI antes de gravar |
 | Jobs | **scripts TS + cron** (ou **pg-boss** no mesmo Postgres, se precisar de fila/retry) | Jobs A–E, retomáveis |
 | Config | `.env` (`FLW_TOKEN`, `OPENAI_API_KEY`, `DATABASE_URL`, modelos) | Segredos fora do código |
-| Relatório v1 | **JSON/API interna** ou HTML estático gerado pelo Job E | Sem app web obrigatório no v1 |
+| Relatório v1 | **Painel Next.js** (API interna + tela) e HTML estático gerado pelo Job E | Só lê o banco: sem banco não mostra dado nenhum (nunca dado de exemplo) |
 
-**Fora do v1:** Redis, fila cloud, frontend React, Docker Compose opcional só para Postgres local.
+**Fora do v1:** Redis, fila cloud. O painel web (Next.js + React + Tailwind) foi adotado no v1 como tela interna, protegido por Basic Auth (`REPORT_BASIC_AUTH_USER`/`PASS`) e servindo só na rede interna. Docker Compose opcional só para Postgres local.
 
 Modelos OpenAI padrão: `gpt-4.1-mini` (estágio 1), `gpt-4.1` (estágio 2), override por env.
 
@@ -242,7 +264,11 @@ Reanálise: só se `prompt_version` subir, ou job manual `force`. Sessão que er
 | `prompt_version_sintese` | |
 | Unique | `(tenant_id, period_start, period_end, scope_type, scope_id)` |
 
-Relatório da semana N **não se update** depois de publicado, salvo correção explícita. Comparação com N−1 usa recálculo *efêmero* ou uma linha `recalc_for_compare` que não substitui o ponto histórico.
+Colunas adicionais em `period_reports`: `comparativo` (JSON: nota da semana anterior recalculada, deltas), `corrected_at`, `correction_reason`. Cada correção guarda a versão anterior em `period_report_revisions`.
+
+Colunas adicionais em `session_analyses`: `attempts`, `next_retry_at` (backoff de erro), `transcript_truncated`, `messages_omitted`, `audio_sem_transcricao`, `atendentes_humanos`, `input_tokens`, `output_tokens`, `cost_usd`.
+
+Relatório da semana N **não se update** depois de publicado, salvo correção explícita (`report --correct --reason "..."`). Comparação com N−1 usa recálculo *efêmero* ou uma linha `recalc_for_compare` que não substitui o ponto histórico.
 
 ---
 
@@ -313,7 +339,7 @@ Tudo que é “análise” passa pela API da OpenAI. Sintéticos e funil **não*
 | Temperatura | `0` | `0.3` |
 | Env | `OPENAI_API_KEY`, `OPENAI_MODEL_STAGE1`, `OPENAI_MODEL_STAGE2` | |
 
-`prompt_version` no banco (ex. `stage1-v1`) sobe quando o texto do sistema ou o schema mudam — isso **reabre** a fila de sessões já analisadas.
+`prompt_version` no banco (ex. `stage1-v2`) sobe quando o texto do sistema ou o schema mudam — isso **reabre** a fila de sessões já analisadas.
 
 **Antes de enviar:** mascarar telefone, e-mail e nome do contato no transcript (`{{cliente}}`, `{{fone}}`). Nome do atendente pode ficar: o relatório é interno.
 
@@ -327,7 +353,7 @@ Tudo que é “análise” passa pela API da OpenAI. Sintéticos e funil **não*
 
 ## 11.1 Estágio 1 — uma sessão
 
-**System (prompt_version `stage1-v1`):**
+**System (prompt_version `stage1-v2`; o texto vigente está em `src/domain/stage1.ts`):**
 
 Você avalia qualidade de um atendimento WhatsApp já encerrado. Dê nota 0–10 em cinco critérios. 10 é excelente. Em “atrito”, 10 significa pouco ou nenhum atrito (polaridade invertida). “Conversa resolvida” é conclusão no diálogo (agendamento, test drive, retorno combinado, peça combinada), não venda no CRM. Mensagens com origin BOT não são o atendente humano. Não invente falas. Se o critério não se aplicar, aplica=false e nota nula. evidencia: no máximo 200 caracteres, já sem telefone/nome do cliente.
 
@@ -357,7 +383,11 @@ Você escreve feedback gerencial com base em agregados já calculados. Não rec�
 
 **User:** JSON com `n`, médias dos 5, histograma, `top_gaps`, lista de até 10 `{resumo, evidencias}`.
 
-**Saída:** `pontos_fortes[]` e `oportunidades[]`, cada item com `n_casos`, `texto`, `script_sugerido` (string ou null).
+**Entrada (`stage2-v2`):** `contagens` por critério (`aplicavel`, `baixo_0_4`, `medio_5_7`, `alto_8_10`) calculadas no código, `top_gaps`, `top_fortes`, `criterios_indisponiveis` e até 10 `casos` (metade das piores notas, metade das melhores; ids curtos `c01…`).
+
+**Saída da IA:** `pontos_fortes[]` e `oportunidades[]`, cada item com `criterio`, `faixa` (`alto` ou `baixo`), `texto` com os marcadores `{n_casos}` e `{n_total}`, e `script_sugerido` (string ou null). **A IA não escreve número.** O sistema preenche `n_casos` e `n_total` a partir das contagens, descarta item de critério indisponível, com contagem zero, na seção errada ou com outra quantidade escrita no texto (cada descarte vai para `limitacoes`), e anonimiza o texto.
+
+**Gravado** em `texto_fortes`/`texto_ops`: `criterio`, `faixa`, `n_casos`, `n_total`, `texto`, `script_sugerido`. Se a chamada falhar, grava-se `null` (não `[]`) e a falha vai para `limitacoes`.
 
 O estágio 2 **não** recalcula as 5 notas.
 
@@ -395,7 +425,7 @@ O estágio 2 **não** recalcula as 5 notas.
 - Histórico de movimentação de etapa sem gravar webhook (`GET` do card é só etapa atual).
 - Reanálise automática a cada mensagem nova em sessão já `COMPLETED`.
 - Mix de produto como KPI oficial.
-- UI pública — o v1 pode ser job + banco + um HTML/API de relatório.
+- UI pública. A tela interna exige Basic Auth e não sai da rede da loja.
 
 ---
 
@@ -405,7 +435,11 @@ O estágio 2 **não** recalcula as 5 notas.
 2. **UUIDs / títulos** dos 4 painéis no tenant FLW.
 3. **Lookback** do backfill inicial.
 4. Chaves: `FLW_TOKEN`, `OPENAI_API_KEY`, opcional override dos dois modelos.
-5. Banco isolado (padrão) vs compartilhado com o importador.
+5. `GO_LIVE_AT` (limita backfill e reanálise), `PERIOD_WEEK_START` (padrão 3 = quarta), fuso do tenant.
+6. Títulos exatos dos painéis (`PANEL_*_TITLE`) ou os IDs; motivos de perda (`config:lost-reasons` lista os reais); `CRITERION_MIN_COVERAGE`.
+7. Preços da OpenAI (`OPENAI_PRICE_*`) se quiser o teto de custo `OPENAI_MAX_USD_PER_RUN`.
+8. Como reconhecer o card que nasce sozinho na oficina (§13): **pendente de definição com a operação**.
+9. Banco isolado (padrão) vs compartilhado com o importador.
 
 Provedor de IA e contrato dos dois prompts já estão travados neste PRD.
 

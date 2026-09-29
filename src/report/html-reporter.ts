@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { PeriodReport } from "../generated/client/index.js";
+import { SEM_RESPOSTA_ALERT_PCT } from "../lib/thresholds.js";
 
 export function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -286,7 +287,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Sem Resposta</div>
-        <div class="kpi-value" style="color: ${(sinteticos.semRespostaPct ?? 0) > 15 ? 'var(--danger)' : 'inherit'}">${sinteticos.semRespostaPct ?? "N/D"}${sinteticos.semRespostaPct == null ? "" : "%"}</div>
+        <div class="kpi-value" style="color: ${(sinteticos.semRespostaPct ?? 0) > SEM_RESPOSTA_ALERT_PCT ? 'var(--danger)' : 'inherit'}">${sinteticos.semRespostaPct ?? "N/D"}${sinteticos.semRespostaPct == null ? "" : "%"}</div>
         <div class="kpi-sub">Cliente ficou no vácuo</div>
       </div>
       <div class="kpi-card">
@@ -317,6 +318,11 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
               <span class="ring-max">de 10</span>
             </div>
           </div>
+          ${
+              report.comparativo && (report.comparativo as any).deltaNota != null
+                ? `<div style="margin-top:6px;font-size:12px;font-weight:600;color:${(report.comparativo as any).deltaNota > 0 ? "var(--success)" : (report.comparativo as any).deltaNota < 0 ? "var(--danger)" : "var(--text-muted)"}" title="Semana anterior recalculada na régua atual">${(report.comparativo as any).deltaNota > 0 ? "▲ +" : (report.comparativo as any).deltaNota < 0 ? "▼ " : "• "}${(report.comparativo as any).deltaNota.toFixed(1)} vs semana anterior</div>`
+                : ""
+            }
           <div class="ring-footer">
             Baseado em <strong>${n}</strong> conversas finalizadas
           </div>

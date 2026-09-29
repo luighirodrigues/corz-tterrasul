@@ -265,6 +265,24 @@ export class FlwClient {
     return this.request<FlwPagination<FlwPanelCardDTO>>(url.toString());
   }
 
+  /** Nomes dos motivos de perda cadastrados no painel (para configurar as listas de justiça). */
+  async listPanelLostReasons(panelId: string): Promise<Array<{ id?: string; name: string }>> {
+    const out: Array<{ id?: string; name: string }> = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const url = new URL(`${this.crmUrl}/v1/panel/${panelId}/lost-reason`);
+      url.searchParams.set("PageNumber", String(page));
+      url.searchParams.set("PageSize", "100");
+      const res = await this.request<FlwPagination<{ id?: string; name: string }>>(url.toString());
+      const items = res.items || res.data || [];
+      out.push(...items);
+      hasMore = Boolean(res.hasMorePages && items.length > 0);
+      page++;
+    }
+    return out;
+  }
+
   async listAllPanelCards(
     panelId: string,
     options?: {

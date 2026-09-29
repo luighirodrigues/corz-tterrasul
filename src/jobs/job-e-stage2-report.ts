@@ -5,7 +5,7 @@ import { prisma } from "../db/prisma.js";
 import { calculateSynthetics } from "./job-c-synthetics.js";
 import { STAGE1_PROMPT_VERSION } from "./job-d-stage1-analysis.js";
 import { checkPublishGate } from "../domain/publish-gate.js";
-import type { Period } from "../domain/period.js";
+import { previousPeriod, type Period } from "../domain/period.js";
 import { ensureTenant } from "../domain/tenant.js";
 import { aggregateQuality, CRITERION_LABEL, pickCases, type AnalysisRow, type Criterion } from "../domain/aggregate.js";
 import { parseList, tallyCards } from "../domain/lost-reasons.js";
@@ -65,6 +65,7 @@ export interface ReportDraft {
   textoOps: unknown;
   preliminar: boolean;
   limitacoes: string | null;
+  comparativo: unknown;
   promptVersionSintese: string;
   model: string;
 }
@@ -170,16 +171,13 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
 
   console.log(`[Job E] Serão gerados ${scopes.length} relatórios por escopo.`);
 
-  for (const scope of scopes) {
-    console.log(`[Job E] Processando escopo: [${scope.scopeType}] ${scope.name} (${scope.scopeId})...`);
-    const limitations: string[] = [...gateLimitations];
-
-    // A. Qualidade: sessões COMPLETED encerradas na janela (M13)
+  /** Qualidade do escopo numa janela: sessões COMPLETED encerradas nela (M13). */
+  async function collectQuality(scope: ReportScope, start: Date, end: Date, forceAvailable?: readonly Criterion[]) {
     const sessions = await prisma.session.findMany({
       where: {
         tenantId,
         status: "COMPLETED",
-        endAt: { gte: options.startDate, lte: options.endDate },
+        endAt: { gte: start, lte: end },
         ...(scope.agentExternalId ? { agentExternalId: scope.agentExternalId } : {}),
         ...(scope.panelIds?.length ? { panelCards: { some: { panelId: { in: scope.panelIds } } } } : {}),
       },
@@ -225,8 +223,49 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
       nSkipped,
       nError,
       nSemEsteira: scope.panelIds ? 0 : nSemEsteira,
+      forceAvailable,
     });
+    return { sessions, rows, qualidade, nSkipped, nError, nPending, nSemEsteira, nDuplicateCards };
+  }
+
+  for (const scope of scopes) {
+    console.log(`[Job E] Processando escopo: [${scope.scopeType}] ${scope.name} (${scope.scopeId})...`);
+    const limitations: string[] = [...gateLimitations];
+
+    const { sessions, rows, qualidade, nSkipped, nError, nPending, nSemEsteira, nDuplicateCards } =
+      await collectQuality(scope, options.startDate, options.endDate);
     const preliminar = qualidade.nComNota < 10;
+
+    // Evolução: semana anterior RECALCULADA com a régua atual (mesmos critérios), só para a seta.
+    // O ponto histórico da semana anterior (linha publicada) não é tocado.
+    let comparativo: unknown = null;
+    {
+      const prevP = previousPeriod({ start: options.startDate, end: options.endDate, label: "" }, tenant.timezone);
+      const availableNow = (Object.keys(CRITERION_LABEL) as Criterion[]).filter((c) => qualidade.contagens[c]);
+      const prev = await collectQuality(scope, prevP.start, prevP.end, availableNow);
+      const coverage = prev.qualidade.n > 0 ? prev.qualidade.nDone / prev.qualidade.n : 0;
+      if (qualidade.notaGeral != null && prev.qualidade.notaGeral != null && coverage >= 0.8) {
+        const d1 = (a: number, b: number) => Number((a - b).toFixed(1));
+        const deltaMedias: Record<string, number | null> = {};
+        for (const c of availableNow) {
+          const cur = qualidade.medias[c];
+          const old = prev.qualidade.medias[c];
+          deltaMedias[c] = cur != null && old != null ? d1(cur, old) : null;
+        }
+        comparativo = {
+          periodoAnterior: { start: prevP.start.toISOString(), end: prevP.end.toISOString() },
+          notaAnteriorRecalculada: prev.qualidade.notaGeral,
+          deltaNota: d1(qualidade.notaGeral, prev.qualidade.notaGeral),
+          mediasAnteriores: prev.qualidade.medias,
+          deltaMedias,
+          nAnterior: prev.qualidade.nComNota,
+        };
+      } else if (qualidade.notaGeral != null && prev.qualidade.n > 0) {
+        limitations.push(
+          `Sem comparação com a semana anterior: só ${fmtPct(coverage)} das conversas dela têm análise na versão atual.`
+        );
+      }
+    }
 
     // B. Sintéticos (Job C) com os mesmos painéis do escopo
     const sinteticos = await calculateSynthetics({
@@ -350,6 +389,7 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
       textoOps: textoOps as any,
       preliminar,
       limitacoes: limitations.length ? limitations.join("\n") : null,
+      comparativo: comparativo as any,
       promptVersionSintese: promptVersion,
       model,
     };

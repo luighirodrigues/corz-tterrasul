@@ -9,6 +9,8 @@ import { HistogramChart } from "@/components/HistogramChart";
 import { FunnelChart } from "@/components/FunnelChart";
 import { AiInsightsBlock } from "@/components/AiInsightsBlock";
 import { ConversationModal } from "@/components/ConversationModal";
+import { TrendChart, type TrendPoint } from "@/components/TrendChart";
+import { SEM_RESPOSTA_ALERT_PCT } from "@/lib/thresholds";
 import {
   Building2,
   Car,
@@ -40,6 +42,7 @@ export default function DashboardPage() {
   const [periods, setPeriods] = useState<Array<{ start: string; end: string }>>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>("");
   const [pipeline, setPipeline] = useState<any>(null);
+  const [history, setHistory] = useState<TrendPoint[]>([]);
 
   useEffect(() => {
     async function loadData() {
@@ -87,6 +90,17 @@ export default function DashboardPage() {
   }, [selectedPeriod]);
 
   const currentReport = reports.find((r) => r.id === selectedReportId) || reports[0];
+
+  useEffect(() => {
+    if (!currentReport) {
+      setHistory([]);
+      return;
+    }
+    fetch(`/api/reports/history?scopeType=${currentReport.scopeType}&scopeId=${encodeURIComponent(currentReport.scopeId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setHistory)
+      .catch(() => setHistory([]));
+  }, [currentReport?.scopeType, currentReport?.scopeId]);
 
   // Grupos de relatórios
   const generalReport = reports.find((r) => r.scopeType === "geral");
@@ -316,6 +330,13 @@ export default function DashboardPage() {
               )}
             </div>
 
+            {currentReport.correctedAt && (
+              <div className="mb-4 p-3 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-700">
+                Corrigido em {new Date(currentReport.correctedAt).toLocaleDateString("pt-BR")} — motivo:{" "}
+                {currentReport.correctionReason}
+              </div>
+            )}
+
             {currentReport.limitacoes && (
               <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
                 <div className="font-bold mb-1">Limitações desta leva</div>
@@ -346,6 +367,28 @@ export default function DashboardPage() {
                     score={currentReport.notaGeral}
                     totalConversas={currentReport.totalConversas}
                   />
+
+                  {currentReport.comparativo && (
+                    <div
+                      className={`mt-2 text-center text-xs font-semibold ${
+                        currentReport.comparativo.deltaNota > 0
+                          ? "text-emerald-700"
+                          : currentReport.comparativo.deltaNota < 0
+                            ? "text-rose-700"
+                            : "text-slate-500"
+                      }`}
+                      title="Compara com a semana anterior recalculada na régua atual; por isso pode diferir do ponto dela no gráfico."
+                    >
+                      {currentReport.comparativo.deltaNota > 0 ? "▲" : currentReport.comparativo.deltaNota < 0 ? "▼" : "•"}{" "}
+                      {currentReport.comparativo.deltaNota > 0 ? "+" : ""}
+                      {currentReport.comparativo.deltaNota.toFixed(1)} vs semana anterior
+                    </div>
+                  )}
+
+                  <div className="mt-4">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Evolução semanal</div>
+                    <TrendChart points={history} highlightStart={new Date(currentReport.periodStart).toISOString()} />
+                  </div>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-100">
@@ -450,7 +493,7 @@ export default function DashboardPage() {
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-400 uppercase font-semibold block">Sem Resposta</span>
-                          <span className={`font-bold ${(ag.sinteticos.semRespostaPct ?? 0) > 30 ? "text-rose-600" : "text-slate-800"}`}>
+                          <span className={`font-bold ${(ag.sinteticos.semRespostaPct ?? 0) > SEM_RESPOSTA_ALERT_PCT ? "text-rose-600" : "text-slate-800"}`}>
                             {ag.sinteticos.semRespostaPct == null ? "N/D" : `${ag.sinteticos.semRespostaPct}%`}
                           </span>
                         </div>

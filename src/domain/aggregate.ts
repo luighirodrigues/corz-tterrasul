@@ -44,6 +44,8 @@ export interface AggregateOptions {
   nSkipped: number;
   nError: number;
   nSemEsteira: number;
+  /** Força o conjunto de critérios (semana anterior recalculada com a mesma régua da atual). */
+  forceAvailable?: readonly Criterion[];
 }
 
 const round1 = (x: number) => Number(x.toFixed(1));
@@ -65,7 +67,9 @@ export function conversationScore(row: AnalysisRow, available: readonly Criterio
  * (conversa sem nenhum critério aplicável não puxa a média para baixo).
  */
 export function aggregateQuality(rows: AnalysisRow[], opts: AggregateOptions): Qualidade {
-  const unavailable = unavailableCriteria(rows, opts.minCoverage);
+  const unavailable = opts.forceAvailable
+    ? CRITERIA.filter((c) => !opts.forceAvailable!.includes(c))
+    : unavailableCriteria(rows, opts.minCoverage);
   const available = CRITERIA.filter((c) => !unavailable.includes(c));
 
   const notas = rows.map((r) => conversationScore(r, available)).filter((v): v is number => v != null);
