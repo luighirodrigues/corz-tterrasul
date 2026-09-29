@@ -44,7 +44,14 @@ describe("FlwClient - listPanelCards", () => {
     expect(calledUrl.searchParams.getAll("Statuses")).toEqual(["OPEN", "WON", "LOST"]);
     expect(calledUrl.searchParams.get("CreatedAt.After")).toBe("2026-09-01T00:00:00Z");
     expect(calledUrl.searchParams.get("CreatedAt.Before")).toBe("2026-09-25T23:59:59Z");
-    expect(calledUrl.searchParams.getAll("IncludeDetails")).toEqual(["StepTitle", "ResponsibleUser", "Contacts"]);
+    expect(calledUrl.searchParams.getAll("IncludeDetails")).toEqual([
+      "PanelTitle",
+      "StepTitle",
+      "StepPhase",
+      "ResponsibleUser",
+      "Contacts",
+      "LostReason",
+    ]);
   });
 
   it("deve permitir sobrescrever os status se desejado", async () => {
@@ -56,5 +63,12 @@ describe("FlwClient - listPanelCards", () => {
 
     const calledUrl = new URL((globalThis.fetch as any).mock.calls[0][0]);
     expect(calledUrl.searchParams.getAll("Statuses")).toEqual(["WON"]);
+  });
+
+  it("deve enviar UpdatedAt.After quando informado (sync incremental)", async () => {
+    const client = new FlwClient({ token: "test-token" });
+    await client.listPanelCards({ panelId: "p", updatedAtAfter: "2026-09-20T00:00:00Z" });
+    const calledUrl = new URL((globalThis.fetch as any).mock.calls[0][0]);
+    expect(calledUrl.searchParams.get("UpdatedAt.After")).toBe("2026-09-20T00:00:00Z");
   });
 });

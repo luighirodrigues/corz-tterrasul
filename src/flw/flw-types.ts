@@ -58,6 +58,9 @@ export interface FlwSessionDTO {
   firstResponseAt?: string;
   endAt?: string;
   lastInteractionDate?: string;
+  lastMessageIn?: string;
+  lastMessageOut?: string;
+  type?: string;
   timeWait?: number;
   timeService?: number;
   createdAt?: string;
@@ -74,6 +77,7 @@ export interface FlwMessageFileDetails {
 export interface FlwMessageTranscription {
   text?: string;
   status?: string;
+  processing?: boolean;
 }
 
 export interface FlwMessageDetails {
@@ -120,8 +124,10 @@ export interface FlwPanelCardDTO {
   panelId: string;
   stepId?: string;
   stepTitle?: string;
+  stepPhase?: string;
+  panelTitle?: string;
   status: "OPEN" | "WON" | "LOST" | string;
-  lostReason?: string;
+  lostReason?: { id?: string; name?: string } | string | null;
   responsibleUserId?: string;
   sessionId?: string;
   createdAt?: string;

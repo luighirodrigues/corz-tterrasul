@@ -84,6 +84,12 @@ model Session {
   firstResponseAt     DateTime? @map("first_response_at")
   endAt               DateTime? @map("end_at")
   lastInteractionDate DateTime? @map("last_interaction_date")
+  lastMessageIn       DateTime? @map("last_message_in")
+  lastMessageOut      DateTime? @map("last_message_out")
+  sessionType         String?   @map("session_type") // INDIVIDUAL | GROUP
+  messagesSyncedAt    DateTime? @map("messages_synced_at")
+  messagesSyncedFlwUpdatedAt DateTime? @map("messages_synced_flw_updated_at")
+  messagesPending     Boolean   @default(false) @map("messages_pending")
   timeWait            Int?      @map("time_wait")
   timeService         Int?      @map("time_service")
   flwCreatedAt        DateTime? @map("flw_created_at")
@@ -143,7 +149,10 @@ model PanelCard {
   stepId            String?   @map("step_id")
   stepTitle         String?   @map("step_title")
   status            String    // OPEN, WON, LOST
-  lostReason        String?   @map("lost_reason")
+  lostReason        String?   @map("lost_reason") // nome do motivo
+  lostReasonId      String?   @map("lost_reason_id")
+  panelTitle        String?   @map("panel_title")
+  stepPhase         String?   @map("step_phase")
   responsibleUserId String?   @map("responsible_user_id")
   sessionExternalId String?   @map("session_external_id")
   sessionId         String?   @map("session_id")
@@ -176,6 +185,7 @@ model SyncJob {
   itemsSuccess Int       @default(0) @map("items_success")
   itemsFailed  Int       @default(0) @map("items_failed")
   errorMessage String?   @map("error_message")
+  params       Json?
   startedAt    DateTime? @map("started_at")
   finishedAt   DateTime? @map("finished_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")

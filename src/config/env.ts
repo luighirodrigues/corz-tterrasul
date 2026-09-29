@@ -10,6 +10,7 @@ const envSchema = z.object({
   FLW_CORE_URL: z.string().default("https://api.wts.chat/core"),
   FLW_CRM_URL: z.string().default("https://api.wts.chat/crm"),
   FLW_RATE_LIMIT_PER_MINUTE: z.coerce.number().default(60),
+  SYNC_OVERLAP_MINUTES: z.coerce.number().default(15),
   OPENAI_API_KEY: z.string().default(""),
   OPENAI_MODEL_STAGE1: z.string().default("gpt-4.1-mini"),
   OPENAI_MODEL_STAGE2: z.string().default("gpt-4.1"),

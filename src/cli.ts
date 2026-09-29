@@ -30,6 +30,18 @@ async function resolveReportPeriod(tenantId: string, args: string[]): Promise<Pe
   return lastClosedPeriod(new Date(), tenant.timezone, tenant.periodWeekStart);
 }
 
+/** Padrão: incremental por UpdatedAt. `--from YYYY-MM-DD` / `--days N` = backfill; `--all` = tudo; `--resume` retoma. */
+function syncOptions(tenantId: string, args: string[]) {
+  const days = argValue(args, "--days");
+  return {
+    tenantId,
+    fromDate: argValue(args, "--from"),
+    lookbackDays: days ? parseInt(days, 10) : undefined,
+    all: args.includes("--all"),
+    resume: args.includes("--resume"),
+  };
+}
+
 async function publishPeriod(tenantId: string, args: string[], period: Period): Promise<void> {
   const dryRun = args.includes("--dry-run");
   const correct = args.includes("--correct");
@@ -92,27 +104,16 @@ async function main() {
 
   switch (command) {
     case "sync": {
-      console.log("=== EXECUTANDO SYNC COMPLETO (JOBS A & B) ===");
-      const isAll = args.includes("--all");
-      const daysArg = argValue(args, "--days");
-      const days = isAll ? undefined : daysArg ? parseInt(daysArg, 10) : 7;
-      if (days) {
-        console.log(`Buscando sessões e cards dos últimos ${days} dias... (use --days N ou --all para histórico completo)`);
-      } else {
-        console.log("Buscando histórico completo de sessões e cards...");
-      }
-      await runJobASyncSessions({ tenantId, lookbackDays: days });
-      await runJobBSyncCards({ tenantId, lookbackDays: days });
+      console.log("=== SYNC (JOBS A & B) ===");
+      await runJobASyncSessions(syncOptions(tenantId, args));
+      await runJobBSyncCards(syncOptions(tenantId, args));
       console.log("=== SYNC FINALIZADO ===");
       break;
     }
 
     case "cards": {
       console.log("=== SINCRONIZAÇÃO DE CARDS CRM (JOB B) ===");
-      const isAll = args.includes("--all");
-      const daysArg = argValue(args, "--days");
-      const days = isAll ? undefined : daysArg ? parseInt(daysArg, 10) : 7;
-      await runJobBSyncCards({ tenantId, lookbackDays: days });
+      await runJobBSyncCards(syncOptions(tenantId, args));
       console.log("=== SYNC DE CARDS FINALIZADO ===");
       break;
     }
@@ -145,14 +146,9 @@ async function main() {
       const period = await resolveReportPeriod(tenantId, args);
       console.log(`Janela: ${period.label}`);
 
-      // Provisório até o sync incremental por UpdatedAt (M06): recua 30 dias para pegar
-      // sessões criadas antes da janela e encerradas dentro dela.
-      const syncFrom = new Date(period.start.getTime() - 30 * 24 * 3600 * 1000).toISOString();
-      const syncTo = new Date().toISOString();
-
-      console.log("\n[Passo 1/4] Sincronizando FLW (Sessões e Cards)...");
-      await runJobASyncSessions({ tenantId, fromDate: syncFrom, toDate: syncTo });
-      await runJobBSyncCards({ tenantId, fromDate: syncFrom, toDate: syncTo });
+      console.log("\n[Passo 1/4] Sincronizando FLW (Sessões e Cards, incremental)...");
+      await runJobASyncSessions({ tenantId });
+      await runJobBSyncCards({ tenantId });
 
       console.log("\n[Passo 2/4] Executando Análise de IA Estágio 1...");
       await runJobDStage1Analysis({ tenantId });
@@ -170,8 +166,9 @@ async function main() {
 Uso: pnpm <comando> [opções]
 
 Comandos:
-  job:sync        Sincroniza sessões, mensagens e cards da FLW (Jobs A & B)   [--days N | --all]
-  job:cards       Sincroniza apenas os cards dos painéis (Job B)              [--days N | --all]
+  job:sync        Sync incremental da FLW (Jobs A & B). 1ª carga: --from YYYY-MM-DD ou --all
+                  [--from YYYY-MM-DD | --days N | --all | --resume]
+  job:cards       Sync incremental apenas dos cards (Job B)                   [--from | --days | --all]
   job:synthetics  Métricas sintéticas da janela (Job C)                       [--week YYYY-MM-DD]
   job:stage1      Análise de IA por sessão (Job D)                            [--limit N]
   job:report      Publica os relatórios da janela (Job E)

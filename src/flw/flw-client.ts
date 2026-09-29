@@ -24,6 +24,7 @@ export interface ListPanelCardsParams {
   statuses?: string[];
   createdAtAfter?: string;
   createdAtBefore?: string;
+  updatedAtAfter?: string;
 }
 
 export class FlwClient {
@@ -120,6 +121,7 @@ export class FlwClient {
     createdAtAfter?: string;
     createdAtBefore?: string;
     updatedAtAfter?: string;
+    endAtAfter?: string;
   } = {}): Promise<FlwPagination<FlwSessionDTO>> {
     const url = new URL(`${this.chatUrl}/v2/session`);
     url.searchParams.set("PageNumber", String(params.pageNumber || 1));
@@ -129,6 +131,7 @@ export class FlwClient {
     if (params.createdAtAfter) url.searchParams.set("CreatedAt.After", params.createdAtAfter);
     if (params.createdAtBefore) url.searchParams.set("CreatedAt.Before", params.createdAtBefore);
     if (params.updatedAtAfter) url.searchParams.set("UpdatedAt.After", params.updatedAtAfter);
+    if (params.endAtAfter) url.searchParams.set("EndAt.After", params.endAtAfter);
 
     // Na API FLW (ASP.NET), arrays na query string devem ser repetidos
     const defaultDetails = ["AgentDetails", "DepartmentsDetails", "ClassificationDetails", "ContactDetails"];
@@ -214,6 +217,7 @@ export class FlwClient {
       statuses?: string[];
       createdAtAfter?: string;
       createdAtBefore?: string;
+      updatedAtAfter?: string;
     }
   ): Promise<FlwPagination<FlwPanelCardDTO>> {
     let params: ListPanelCardsParams;
@@ -225,6 +229,7 @@ export class FlwClient {
         statuses: options?.statuses,
         createdAtAfter: options?.createdAtAfter,
         createdAtBefore: options?.createdAtBefore,
+        updatedAtAfter: options?.updatedAtAfter,
       };
     } else {
       params = paramsOrPanelId;
@@ -250,9 +255,13 @@ export class FlwClient {
       url.searchParams.set("CreatedAt.Before", params.createdAtBefore);
     }
 
-    url.searchParams.append("IncludeDetails", "StepTitle");
-    url.searchParams.append("IncludeDetails", "ResponsibleUser");
-    url.searchParams.append("IncludeDetails", "Contacts");
+    if (params.updatedAtAfter) {
+      url.searchParams.set("UpdatedAt.After", params.updatedAtAfter);
+    }
+
+    for (const d of ["PanelTitle", "StepTitle", "StepPhase", "ResponsibleUser", "Contacts", "LostReason"]) {
+      url.searchParams.append("IncludeDetails", d);
+    }
     return this.request<FlwPagination<FlwPanelCardDTO>>(url.toString());
   }
 
@@ -262,6 +271,7 @@ export class FlwClient {
       statuses?: string[];
       createdAtAfter?: string;
       createdAtBefore?: string;
+      updatedAtAfter?: string;
     }
   ): Promise<FlwPanelCardDTO[]> {
     const allCards: FlwPanelCardDTO[] = [];
@@ -276,6 +286,7 @@ export class FlwClient {
         statuses: options?.statuses,
         createdAtAfter: options?.createdAtAfter,
         createdAtBefore: options?.createdAtBefore,
+        updatedAtAfter: options?.updatedAtAfter,
       });
       const cards = response.items || response.data || [];
       if (cards.length > 0) {
