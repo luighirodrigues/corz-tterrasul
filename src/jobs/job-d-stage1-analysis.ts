@@ -209,14 +209,15 @@ export async function runJobDStage1Analysis(options: Stage1Options = {}): Promis
     }
 
     // Montar transcript compacto e anonimizado
+    const anonCtx = {
+      clientNames: [session.contactName, session.contactNameWhatsapp],
+      clientPhone: session.contactPhone,
+    };
     const transcriptLines = validMsgs.map((m, idx) => {
       const dirLabel = m.direction === "TO_HUB" ? "cliente" : "operacao";
       const originLabel = m.origin === "BOT" ? " [BOT]" : "";
       const rawContent = m.text || m.transcription || "";
-      const safeContent = anonymizeText(rawContent, {
-        clientName: session.contactName,
-        clientPhone: session.contactPhone,
-      });
+      const safeContent = anonymizeText(rawContent, anonCtx);
       const timeStr = new Date(m.timestamp).toISOString().substring(11, 19);
       return `${idx + 1}. [${timeStr}] ${dirLabel}${originLabel}: ${safeContent}`;
     });
@@ -269,14 +270,15 @@ ${transcriptPayload}`;
 
       // Higienizar evidências
       const safeEvidencias = {
-        atrito: truncateEvidence(parsedData.atrito.evidencia || ""),
-        solucao: truncateEvidence(parsedData.solucao.evidencia || ""),
-        necessidade: truncateEvidence(parsedData.necessidade.evidencia || ""),
-        proximo_passo: truncateEvidence(parsedData.proximo_passo.evidencia || ""),
-        resolvida: truncateEvidence(parsedData.resolvida.evidencia || ""),
+        atrito: truncateEvidence(parsedData.atrito.evidencia || "", 200, anonCtx),
+        solucao: truncateEvidence(parsedData.solucao.evidencia || "", 200, anonCtx),
+        necessidade: truncateEvidence(parsedData.necessidade.evidencia || "", 200, anonCtx),
+        proximo_passo: truncateEvidence(parsedData.proximo_passo.evidencia || "", 200, anonCtx),
+        resolvida: truncateEvidence(parsedData.resolvida.evidencia || "", 200, anonCtx),
       };
 
       const notaConversa = calculateNotaConversa(parsedData);
+      const safeResumo = truncateEvidence(parsedData.resumo, 200, anonCtx);
 
       await prisma.sessionAnalysis.upsert({
         where: {
@@ -296,7 +298,7 @@ ${transcriptPayload}`;
           scoreResolvida: parsedData.resolvida.aplica ? parsedData.resolvida.nota : null,
           notaConversa,
           evidencias: safeEvidencias,
-          resumo1Linha: parsedData.resumo,
+          resumo1Linha: safeResumo,
           entidades: (parsedData.entidades as any) ?? undefined,
           analyzedAt: new Date(),
           errorText: null,
@@ -315,7 +317,7 @@ ${transcriptPayload}`;
           scoreResolvida: parsedData.resolvida.aplica ? parsedData.resolvida.nota : null,
           notaConversa,
           evidencias: safeEvidencias,
-          resumo1Linha: parsedData.resumo,
+          resumo1Linha: safeResumo,
           entidades: (parsedData.entidades as any) ?? undefined,
           analyzedAt: new Date(),
         },

@@ -26,6 +26,8 @@ import {
   Filter,
 } from "lucide-react";
 
+const fmtNota = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(1));
+
 export default function DashboardPage() {
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [selectedReportId, setSelectedReportId] = useState<string>("");
@@ -34,18 +36,35 @@ export default function DashboardPage() {
   const [selectedSession, setSelectedSession] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [agentFilter, setAgentFilter] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [periods, setPeriods] = useState<Array<{ start: string; end: string }>>([]);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("");
+  const [pipeline, setPipeline] = useState<any>(null);
 
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
-        const [repRes, sessRes] = await Promise.all([
-          fetch("/api/reports"),
+        setError(null);
+        const q = selectedPeriod ? `?period=${encodeURIComponent(selectedPeriod)}` : "";
+        const [repRes, sessRes, perRes, pipeRes] = await Promise.all([
+          fetch(`/api/reports${q}`),
           fetch("/api/sessions"),
+          fetch("/api/reports/periods"),
+          fetch("/api/pipeline"),
         ]);
+
+        if (!repRes.ok || !sessRes.ok) {
+          setError("Banco indisponível. Nenhum dado é exibido sem o banco.");
+          setReports([]);
+          setSessions([]);
+          return;
+        }
 
         const repData: ReportItem[] = await repRes.json();
         const sessData: SessionDetail[] = await sessRes.json();
+        if (perRes.ok) setPeriods(await perRes.json());
+        setPipeline(await pipeRes.json().catch(() => null));
 
         setReports(repData);
         setSessions(sessData);
@@ -65,7 +84,7 @@ export default function DashboardPage() {
     }
 
     loadData();
-  }, []);
+  }, [selectedPeriod]);
 
   const currentReport = reports.find((r) => r.id === selectedReportId) || reports[0];
 
@@ -76,7 +95,7 @@ export default function DashboardPage() {
   const agentReports = reports.filter((r) => r.scopeType === "agente");
 
   // Ranking ordenado
-  const sortedAgents = [...agentReports].sort((a, b) => b.notaGeral - a.notaGeral);
+  const sortedAgents = [...agentReports].sort((a, b) => (b.notaGeral ?? -1) - (a.notaGeral ?? -1));
 
   // Filtragem de conversas na aba de auditoria
   const filteredSessions = sessions.filter((s) => {
@@ -122,14 +141,24 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              <span>
-                {currentReport ? `${currentReport.periodStart} até ${currentReport.periodEnd}` : "Semana Vigente"}
-              </span>
+              <select
+                value={selectedPeriod}
+                onChange={(e) => setSelectedPeriod(e.target.value)}
+                className="bg-transparent outline-hidden"
+                aria-label="Semana"
+              >
+                <option value="">Última publicada</option>
+                {periods.map((p) => (
+                  <option key={p.start} value={p.start}>
+                    {new Date(p.start).toLocaleDateString("pt-BR")} a {new Date(p.end).toLocaleDateString("pt-BR")}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Santana</span>
+              <span>{pipeline?.tenant?.name ?? "—"}</span>
             </div>
           </div>
         </div>
@@ -197,6 +226,14 @@ export default function DashboardPage() {
         {/* ======================================================== */}
         {/* ABA 1: DASHBOARD POR ESCOPO                             */}
         {/* ======================================================== */}
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-sm text-rose-800">{error}</div>
+        )}
+        {!error && reports.length === 0 && activeTab !== "pipeline" && (
+          <div className="mb-6 p-4 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-600">
+            Nenhum relatório publicado.
+          </div>
+        )}
         {activeTab === "dashboard" && currentReport && (
           <div>
             {/* Scope Selector Ribbon */}
@@ -217,7 +254,7 @@ export default function DashboardPage() {
                 >
                   <Building2 className="w-3.5 h-3.5" />
                   <span>Visão Geral</span>
-                  <span className="text-[10px] opacity-80">({generalReport.notaGeral.toFixed(1)})</span>
+                  <span className="text-[10px] opacity-80">({fmtNota(generalReport.notaGeral)})</span>
                 </button>
               )}
 
@@ -236,7 +273,7 @@ export default function DashboardPage() {
                 >
                   {d.scopeId === "veiculos" ? <Car className="w-3.5 h-3.5" /> : <Wrench className="w-3.5 h-3.5" />}
                   <span>{d.title.replace("Divisão ", "")}</span>
-                  <span className="text-[10px] opacity-80">({d.notaGeral.toFixed(1)})</span>
+                  <span className="text-[10px] opacity-80">({fmtNota(d.notaGeral)})</span>
                 </button>
               ))}
 
@@ -255,7 +292,7 @@ export default function DashboardPage() {
                 >
                   <Filter className="w-3.5 h-3.5" />
                   <span>{p.title.replace("Painel CRM - ", "").replace("Painel CRM ", "")}</span>
-                  <span className="text-[10px] opacity-80">({p.notaGeral.toFixed(1)})</span>
+                  <span className="text-[10px] opacity-80">({fmtNota(p.notaGeral)})</span>
                 </button>
               ))}
             </div>
@@ -278,6 +315,17 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {currentReport.limitacoes && (
+              <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                <div className="font-bold mb-1">Limitações desta leva</div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {currentReport.limitacoes.split("\n").filter(Boolean).map((l, i) => (
+                    <li key={i}>{l}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* 1. KPIs Sintéticos */}
             <KpiStrip metrics={currentReport.sinteticos} />
@@ -337,6 +385,8 @@ export default function DashboardPage() {
             <AiInsightsBlock
               pontosFortes={currentReport.textoFortes}
               oportunidades={currentReport.textoOps}
+              model={currentReport.model}
+              promptVersion={currentReport.promptVersionSintese}
             />
           </div>
         )}
@@ -386,7 +436,7 @@ export default function DashboardPage() {
 
                         <div className="text-right">
                           <div className="text-xl font-black text-slate-900 leading-none">
-                            {ag.notaGeral.toFixed(1)}
+                            {fmtNota(ag.notaGeral)}
                           </div>
                           <span className="text-[10px] text-slate-400 font-semibold">nota 0-10</span>
                         </div>
@@ -407,7 +457,7 @@ export default function DashboardPage() {
                       </div>
 
                       {/* Top Highlights Preview */}
-                      {ag.textoFortes.length > 0 && (
+                      {ag.textoFortes && ag.textoFortes.length > 0 && (
                         <p className="text-xs text-slate-600 line-clamp-2 italic mb-4">
                           "{ag.textoFortes[0].texto}"
                         </p>
@@ -485,7 +535,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 line-clamp-1 mt-0.5">
-                        "{sess.resumo1Linha}"
+                        {sess.resumo1Linha ? `"${sess.resumo1Linha}"` : "Resumo indisponível"}
                       </p>
                     </div>
                   </div>
@@ -493,13 +543,13 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
                     <div className="text-left sm:text-right">
                       <span className="text-xs text-slate-400 block">{sess.startAt}</span>
-                      <span className="text-[11px] text-slate-500">{sess.durationMinutes} min de atendimento</span>
+                      <span className="text-[11px] text-slate-500">{sess.durationMinutes ?? "N/D"} min de atendimento</span>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <div className="text-right">
                         <div className="text-base font-extrabold text-blue-600">
-                          {sess.notaConversa.toFixed(1)}
+                          {fmtNota(sess.notaConversa)}
                         </div>
                         <span className="text-[10px] text-slate-400 font-semibold block">nota IA</span>
                       </div>
@@ -532,59 +582,34 @@ export default function DashboardPage() {
                 Fluxo Contínuo de Dados
               </h2>
 
-              <div className="space-y-4">
-                {[
-                  {
-                    step: "Job A",
-                    name: "Sincronização de Sessões & Mensagens FLW",
-                    desc: "Puxa incrementos da API Chat com rate limit de 60 req/min e controle de checkpoint.",
-                    status: "Pronto",
-                  },
-                  {
-                    step: "Job B",
-                    name: "Sincronização de Cards CRM",
-                    desc: "Ingestão dos 4 painéis da loja (Vendas, Campanhas, Peças, Oficina) com desfechos OPEN, WON e LOST.",
-                    status: "Pronto",
-                  },
-                  {
-                    step: "Job C",
-                    name: "Cálculo de Métricas Sintéticas",
-                    desc: "Calcula TMR, FTR mediana, % sem resposta e taxa de fechamento puramente via SQL.",
-                    status: "Pronto",
-                  },
-                  {
-                    step: "Job D",
-                    name: "IA Estágio 1 (Por Sessão)",
-                    desc: "Micro-avaliação estruturada com OpenAI (GPT-4.1-mini) com anonimização automática de contatos.",
-                    status: "Pronto",
-                  },
-                  {
-                    step: "Job E",
-                    name: "IA Estágio 2 (Síntese & Relatórios)",
-                    desc: "Consolida as notas e gera os bullets de coaching executivo (GPT-4.1) por vendedor e painel.",
-                    status: "Pronto",
-                  },
-                ].map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/60 flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-white">
-                          {item.step}
-                        </span>
-                        <span className="text-xs font-bold text-slate-900">{item.name}</span>
-                      </div>
-                      <p className="text-xs text-slate-500">{item.desc}</p>
-                    </div>
-
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      {item.status}
-                    </span>
+              {!pipeline || pipeline.dbStatus !== "online" ? (
+                <p className="text-xs text-rose-700">Banco indisponível: sem status de jobs.</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-xs text-slate-600">
+                    Análises da IA (estágio 1):{" "}
+                    {Object.entries(pipeline.analyses ?? {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "nenhuma"}
                   </div>
-                ))}
-              </div>
+                  {(pipeline.recentJobs ?? []).length === 0 && (
+                    <p className="text-xs text-slate-500">Nenhum job executado ainda.</p>
+                  )}
+                  {(pipeline.recentJobs ?? []).map((j: any) => (
+                    <div key={j.id} className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/60 flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">{j.jobType}</div>
+                        <p className="text-xs text-slate-500">
+                          {j.startedAt ? new Date(j.startedAt).toLocaleString("pt-BR") : "—"}
+                          {j.finishedAt ? ` → ${new Date(j.finishedAt).toLocaleString("pt-BR")}` : ""} · {j.itemsSuccess} ok · {j.itemsFailed} falhas
+                        </p>
+                        {j.errorMessage && <p className="text-xs text-rose-600">{j.errorMessage}</p>}
+                      </div>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                        {j.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Quick terminal commands box */}

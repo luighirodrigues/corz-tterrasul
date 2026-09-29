@@ -2,6 +2,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { PeriodReport } from "../generated/client/index.js";
 
+export function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function generateReportHtml(report: PeriodReport, scopeTitle: string): string {
   const sinteticos = report.sinteticos as any;
   const qualidade = report.qualidade as any;
@@ -24,7 +33,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Relatório de Qualidade — ${scopeTitle}</title>
+  <title>Relatório de Qualidade — ${escapeHtml(scopeTitle)}</title>
   <style>
     :root {
       --bg-color: #f8fafc;
@@ -229,13 +238,28 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
   <div class="container">
     <header>
       <div>
-        <h1>${scopeTitle}</h1>
+        <h1>${escapeHtml(scopeTitle)}</h1>
         <div class="period-badge">Período de Análise: <strong>${startStr}</strong> até <strong>${endStr}</strong></div>
       </div>
       <div>
         <span style="font-size: 12px; color: var(--text-muted);">Padrão Pry / FLW Quality v1</span>
       </div>
     </header>
+
+    ${
+      report.limitacoes
+        ? `<div class="preliminar-warning"><strong>Limitações desta leva:</strong><ul style="margin: 6px 0 0 18px;">${report.limitacoes
+            .split("\n")
+            .filter(Boolean)
+            .map((l) => `<li>${escapeHtml(l)}</li>`)
+            .join("")}</ul></div>`
+        : ""
+    }
+    ${
+      report.correctedAt
+        ? `<div class="preliminar-warning">Corrigido em ${new Date(report.correctedAt).toLocaleDateString("pt-BR")} — motivo: ${escapeHtml(report.correctionReason ?? "")}</div>`
+        : ""
+    }
 
     ${
       report.preliminar
@@ -388,7 +412,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
               .map(
                 ([etapa, qtd]) => `
               <div style="display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; background: #f8fafc; border-radius: 4px; border: 1px solid #f1f5f9;">
-                <span>${etapa}</span>
+                <span>${escapeHtml(etapa)}</span>
                 <strong>${qtd}</strong>
               </div>`
               )
@@ -405,7 +429,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
               .map(
                 ([motivo, qtd]) => `
               <div style="display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; background: #fef2f2; border-radius: 4px; border: 1px solid #fee2e2;">
-                <span>${motivo}</span>
+                <span>${escapeHtml(motivo)}</span>
                 <strong style="color: var(--danger);">${qtd}</strong>
               </div>`
               )
@@ -435,7 +459,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
                       (tf) => `
                     <li class="bullet-item strong">
                       <span class="badge-count">${tf.n_casos} casos</span>
-                      <div>${tf.texto}</div>
+                      <div>${escapeHtml(tf.texto)}</div>
                     </li>`
                     )
                     .join("")}
@@ -455,10 +479,10 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
                       (to) => `
                     <li class="bullet-item opp">
                       <span class="badge-count">${to.n_casos} casos</span>
-                      <div>${to.texto}</div>
+                      <div>${escapeHtml(to.texto)}</div>
                       ${
                         to.script_sugerido
-                          ? `<div class="script-box"><strong>Script Sugerido:</strong> "${to.script_sugerido}"</div>`
+                          ? `<div class="script-box"><strong>Script Sugerido:</strong> "${escapeHtml(to.script_sugerido)}"</div>`
                           : ""
                       }
                     </li>`

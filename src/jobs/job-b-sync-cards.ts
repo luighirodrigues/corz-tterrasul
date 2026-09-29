@@ -1,6 +1,8 @@
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
 import { FlwClient } from "../flw/flw-client.js";
+import { ensureTenant, panelConfigFromEnv } from "../domain/tenant.js";
+import { resolvePanelIds, type PanelKey } from "../domain/panels.js";
 
 export interface SyncCardsOptions {
   tenantId?: string;
@@ -31,62 +33,37 @@ export async function runJobBSyncCards(options: SyncCardsOptions = {}): Promise<
     }${createdAtBefore ? ` | CreatedAt.Before=${createdAtBefore}` : ""}`
   );
 
-  // 1. Obter tenant e verificar IDs dos painéis
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-  });
+  // 1. Tenant atualizado a partir do .env e IDs dos 4 painéis (ID configurado > título exato)
+  const tenant = await ensureTenant(tenantId);
 
-  if (!tenant) {
-    throw new Error(`Tenant ${tenantId} não encontrado. Execute o Job A primeiro.`);
+  const panelKeys = [
+    { key: "vendas", name: "Vendas", current: tenant.panelVendasId },
+    { key: "campanhas", name: "Campanhas", current: tenant.panelCampanhasId },
+    { key: "pecas", name: "Peças", current: tenant.panelPecasId },
+    { key: "oficina", name: "Oficina", current: tenant.panelOficinaId },
+  ] as const;
+
+  let resolved: Record<PanelKey, string>;
+  if (panelKeys.every((p) => p.current)) {
+    resolved = Object.fromEntries(panelKeys.map((p) => [p.key, p.current as string])) as Record<PanelKey, string>;
+  } else {
+    const panels = await client.listPanels();
+    console.log(`[Job B] Painéis na FLW (${panels.length}):`, panels.map((p) => `${p.title} (${p.id})`));
+    const cfg = panelConfigFromEnv();
+    for (const p of panelKeys) if (p.current) cfg.ids[p.key] = p.current;
+    resolved = resolvePanelIds(panels, cfg); // lança com a lista de painéis se não achar
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        panelVendasId: resolved.vendas,
+        panelCampanhasId: resolved.campanhas,
+        panelPecasId: resolved.pecas,
+        panelOficinaId: resolved.oficina,
+      },
+    });
   }
 
-  let { panelVendasId, panelCampanhasId, panelPecasId, panelOficinaId } = tenant;
-
-  // Se algum ID não estiver configurado, buscar na API FLW
-  if (!panelVendasId || !panelCampanhasId || !panelPecasId || !panelOficinaId) {
-    try {
-      const panels = await client.listPanels();
-      console.log(`[Job B] Painéis encontrados na FLW (${panels.length}):`, panels.map((p) => `${p.title} (${p.id})`));
-
-      for (const p of panels) {
-        const titleLower = p.title.toLowerCase();
-        if (!panelVendasId && titleLower.includes("venda") && !titleLower.includes("campanha")) {
-          panelVendasId = p.id;
-        } else if (!panelCampanhasId && (titleLower.includes("campanha") || titleLower.includes("anuncio"))) {
-          panelCampanhasId = p.id;
-        } else if (!panelPecasId && titleLower.includes("peça") || titleLower.includes("peca")) {
-          panelPecasId = p.id;
-        } else if (!panelOficinaId && (titleLower.includes("oficina") || titleLower.includes("serviço") || titleLower.includes("servico"))) {
-          panelOficinaId = p.id;
-        }
-      }
-
-      // Atualizar tenant com os IDs encontrados
-      await prisma.tenant.update({
-        where: { id: tenantId },
-        data: {
-          panelVendasId: panelVendasId || null,
-          panelCampanhasId: panelCampanhasId || null,
-          panelPecasId: panelPecasId || null,
-          panelOficinaId: panelOficinaId || null,
-        },
-      });
-    } catch (err: any) {
-      console.warn(`[Job B] Não foi possível resolver painéis automaticamente: ${err.message}`);
-    }
-  }
-
-  const panelsToSync = [
-    { name: "Vendas", id: panelVendasId },
-    { name: "Campanhas", id: panelCampanhasId },
-    { name: "Peças", id: panelPecasId },
-    { name: "Oficina", id: panelOficinaId },
-  ].filter((p): p is { name: string; id: string } => !!p.id);
-
-  if (panelsToSync.length === 0) {
-    console.warn("[Job B] Nenhum ID de painel CRM configurado para sincronizar.");
-    return;
-  }
+  const panelsToSync = panelKeys.map((p) => ({ name: p.name, id: resolved[p.key] }));
 
   const syncJob = await prisma.syncJob.create({
     data: {

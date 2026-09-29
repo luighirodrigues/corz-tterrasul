@@ -25,7 +25,7 @@ export const ConversationModal: React.FC<ConversationModalProps> = ({ session, o
                   Conversa #{session.number || session.id.slice(0, 8)}
                 </h3>
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                  Nota {session.notaConversa.toFixed(1)}/10
+                  Nota {session.notaConversa == null ? "N/D" : session.notaConversa.toFixed(1)}/10
                 </span>
                 <span className="text-xs text-slate-400">• {session.panelName}</span>
               </div>
@@ -37,7 +37,7 @@ export const ConversationModal: React.FC<ConversationModalProps> = ({ session, o
                   <Phone className="w-3.5 h-3.5" /> {session.contactPhone}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" /> {session.startAt} ({session.durationMinutes} min)
+                  <Clock className="w-3.5 h-3.5" /> {session.startAt ?? "N/D"} ({session.durationMinutes ?? "N/D"} min)
                 </span>
               </div>
             </div>
@@ -60,7 +60,7 @@ export const ConversationModal: React.FC<ConversationModalProps> = ({ session, o
                 Resumo em 1 Linha (IA)
               </span>
               <p className="text-xs font-medium text-slate-800 leading-relaxed">
-                "{session.resumo1Linha}"
+                {session.resumo1Linha ? `"${session.resumo1Linha}"` : "Resumo indisponível"}
               </p>
             </div>
 

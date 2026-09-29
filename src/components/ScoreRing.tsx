@@ -1,7 +1,7 @@
 import React from "react";
 
 interface ScoreRingProps {
-  score: number;
+  score: number | null;
   totalConversas: number;
   size?: number;
 }
@@ -13,12 +13,14 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
 }) => {
   const radius = 70;
   const circumference = 2 * Math.PI * radius; // ~439.8
-  const clampedScore = Math.min(10, Math.max(0, score));
+  const clampedScore = score == null ? 0 : Math.min(10, Math.max(0, score));
   const progress = clampedScore / 10;
   const strokeDashoffset = circumference * (1 - progress);
 
   let strokeColor = "#16a34a"; // verde
-  if (clampedScore < 6.0) {
+  if (score == null) {
+    strokeColor = "#cbd5e1";
+  } else if (clampedScore < 6.0) {
     strokeColor = "#dc2626"; // vermelho
   } else if (clampedScore < 8.0) {
     strokeColor = "#f59e0b"; // amarelo/laranja
@@ -59,7 +61,7 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
 
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="text-4xl font-extrabold tracking-tight text-slate-900 leading-none">
-            {score.toFixed(1)}
+            {score == null ? "—" : score.toFixed(1)}
           </span>
           <span className="text-xs font-semibold text-slate-500 mt-1">de 10</span>
         </div>

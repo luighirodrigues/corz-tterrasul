@@ -3,14 +3,27 @@ import type { AiInsight } from "@/lib/types";
 import { Sparkles, CheckCircle2, Lightbulb, MessageSquareQuote } from "lucide-react";
 
 interface AiInsightsBlockProps {
-  pontosFortes: AiInsight[];
-  oportunidades: AiInsight[];
+  pontosFortes: AiInsight[] | null;
+  oportunidades: AiInsight[] | null;
+  model?: string | null;
+  promptVersion?: string | null;
 }
 
 export const AiInsightsBlock: React.FC<AiInsightsBlockProps> = ({
   pontosFortes,
   oportunidades,
+  model,
+  promptVersion,
 }) => {
+  if (pontosFortes === null && oportunidades === null) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 mb-6 text-sm text-slate-500">
+        Síntese de IA indisponível nesta leva.
+      </div>
+    );
+  }
+  pontosFortes = pontosFortes ?? [];
+  oportunidades = oportunidades ?? [];
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 mb-6">
       <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-3">
@@ -19,7 +32,7 @@ export const AiInsightsBlock: React.FC<AiInsightsBlockProps> = ({
           Síntese de Inteligência Artificial & Coaching Operacional
         </h2>
         <span className="ml-auto text-xs font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full">
-          Estágio 2 • GPT-4.1
+          Estágio 2 • {model ?? "modelo N/D"}{promptVersion ? ` • ${promptVersion}` : ""}
         </span>
       </div>
 

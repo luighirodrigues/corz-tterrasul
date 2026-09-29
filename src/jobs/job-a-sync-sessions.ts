@@ -1,6 +1,7 @@
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
 import { FlwClient } from "../flw/flw-client.js";
+import { ensureTenant } from "../domain/tenant.js";
 
 export interface SyncSessionsOptions {
   tenantId?: string;
@@ -15,22 +16,8 @@ export async function runJobASyncSessions(options: SyncSessionsOptions = {}): Pr
 
   console.log(`[Job A] Iniciando sincronização de sessões para o tenant: ${tenantId}`);
 
-  // 1. Garantir existência do tenant
-  await prisma.tenant.upsert({
-    where: { id: tenantId },
-    update: { name: env.DEFAULT_TENANT_NAME },
-    create: {
-      id: tenantId,
-      name: env.DEFAULT_TENANT_NAME,
-      token: env.FLW_TOKEN,
-      timezone: env.TIMEZONE,
-      panelVendasId: env.PANEL_VENDAS_ID || null,
-      panelCampanhasId: env.PANEL_CAMPANHAS_ID || null,
-      panelPecasId: env.PANEL_PECAS_ID || null,
-      panelOficinaId: env.PANEL_OFICINA_ID || null,
-      ignoredLostReasons: env.IGNORED_LOST_REASONS,
-    },
-  });
+  // 1. Garantir tenant atualizado a partir do .env
+  await ensureTenant(tenantId);
 
   // 2. Sincronizar agentes
   try {
@@ -131,7 +118,8 @@ function parseTimeToSeconds(val: any): number | null {
               number: item.number != null ? String(item.number) : null,
               title: item.title ?? null,
               contactId: item.contactId ?? null,
-              contactName: item.contactDetails?.name || item.contactDetails?.nameWhatsapp || null,
+              contactName: item.contactDetails?.name || null,
+              contactNameWhatsapp: item.contactDetails?.nameWhatsapp || null,
               contactPhone: item.contactDetails?.phonenumber || null,
               channelId: item.channelId ?? null,
               channelType: item.channelType ?? null,
@@ -155,7 +143,8 @@ function parseTimeToSeconds(val: any): number | null {
               number: item.number != null ? String(item.number) : null,
               title: item.title ?? null,
               contactId: item.contactId ?? null,
-              contactName: item.contactDetails?.name || item.contactDetails?.nameWhatsapp || null,
+              contactName: item.contactDetails?.name || null,
+              contactNameWhatsapp: item.contactDetails?.nameWhatsapp || null,
               contactPhone: item.contactDetails?.phonenumber || null,
               channelId: item.channelId ?? null,
               channelType: item.channelType ?? null,

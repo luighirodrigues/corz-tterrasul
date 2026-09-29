@@ -21,6 +21,8 @@ model Tenant {
   panelOficinaId     String?  @map("panel_oficina_id")
   ignoredLostReasons String?  @map("ignored_lost_reasons") // motivos separados por vírgula
   timezone           String   @default("America/Sao_Paulo")
+  periodWeekStart    Int      @default(3) @map("period_week_start") // ISO: 3 = quarta
+  goLiveAt           DateTime? @map("go_live_at")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
@@ -68,6 +70,7 @@ model Session {
   title               String?
   contactId           String?   @map("contact_id")
   contactName         String?   @map("contact_name")
+  contactNameWhatsapp String?   @map("contact_name_whatsapp")
   contactPhone        String?   @map("contact_phone")
   channelId           String?   @map("channel_id")
   channelType         String?   @map("channel_type")
@@ -238,10 +241,29 @@ model PeriodReport {
   promptVersionSintese String? @map("prompt_version_sintese")
   model               String?
   publishedAt         DateTime @default(now()) @map("published_at")
+  correctedAt         DateTime? @map("corrected_at")
+  correctionReason    String?   @map("correction_reason")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  revisions PeriodReportRevision[]
 
   @@unique([tenantId, periodStart, periodEnd, scopeType, scopeId])
   @@index([tenantId, periodStart, periodEnd])
   @@map("period_reports")
+}
+
+// -------------------------------------------------------------
+// Histórico de correções de relatórios já publicados
+// -------------------------------------------------------------
+model PeriodReportRevision {
+  id        String   @id @default(uuid())
+  reportId  String   @map("report_id")
+  snapshot  Json
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  report PeriodReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("period_report_revisions")
 }

@@ -3,35 +3,22 @@ import { prisma } from "@/db/prisma";
 
 export async function GET() {
   try {
-    const jobs = await prisma.syncJob.findMany({
-      orderBy: { startedAt: "desc" },
-      take: 10,
-    });
-
-    const tenant = await prisma.tenant.findFirst({
-      select: { id: true, name: true, timezone: true, updatedAt: true },
-    });
+    const [jobs, tenant, analysisCounts] = await Promise.all([
+      prisma.syncJob.findMany({ orderBy: { startedAt: "desc" }, take: 10 }),
+      prisma.tenant.findFirst({ select: { id: true, name: true, timezone: true, updatedAt: true } }),
+      prisma.sessionAnalysis.groupBy({ by: ["status"], _count: { _all: true } }),
+    ]);
 
     return NextResponse.json({
       dbStatus: "online",
       tenant,
       recentJobs: jobs,
+      analyses: Object.fromEntries(analysisCounts.map((c) => [c.status, c._count._all])),
     });
   } catch (error: any) {
-    return NextResponse.json({
-      dbStatus: "offline",
-      message: "PostgreSQL não conectado no momento (usando relatórios cacheados)",
-      recentJobs: [
-        {
-          id: "sync-1",
-          jobType: "PIPELINE_COMPLETE",
-          status: "completed",
-          startedAt: "2026-09-25T10:30:00Z",
-          finishedAt: "2026-09-25T10:34:00Z",
-          itemsSuccess: 124,
-          itemsFailed: 0,
-        },
-      ],
-    });
+    return NextResponse.json(
+      { dbStatus: "offline", error: "Banco indisponível", recentJobs: [], analyses: {} },
+      { status: 503 }
+    );
   }
 }

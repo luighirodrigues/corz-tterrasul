@@ -2,7 +2,8 @@ import { env } from "./config/env.js";
 import { prisma } from "./db/prisma.js";
 
 export async function seedDemoData() {
-  const tenantId = env.DEFAULT_TENANT_ID;
+  // Sempre no tenant "demo": jobs e tela usam DEFAULT_TENANT_ID e nunca devem misturar com dados de demonstração.
+  const tenantId = "demo";
   console.log(`[Seed] Inserindo dados de demonstração para o tenant: ${tenantId}...`);
 
   // 1. Garantir Tenant
@@ -11,7 +12,7 @@ export async function seedDemoData() {
     update: {},
     create: {
       id: tenantId,
-      name: env.DEFAULT_TENANT_NAME,
+      name: "Demonstração",
       timezone: env.TIMEZONE,
       panelVendasId: "panel-vendas-1",
       panelCampanhasId: "panel-campanhas-1",

@@ -4,6 +4,9 @@ import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
 import { calculateSynthetics } from "./job-c-synthetics.js";
 import { STAGE1_PROMPT_VERSION } from "./job-d-stage1-analysis.js";
+import { checkPublishGate } from "../domain/publish-gate.js";
+import type { Period } from "../domain/period.js";
+import { ensureTenant } from "../domain/tenant.js";
 
 export const STAGE2_PROMPT_VERSION = "stage2-v1";
 
@@ -71,20 +74,65 @@ export interface RunStage2Options {
   startDate: Date;
   endDate: Date;
   promptVersion?: string;
+  /** Não grava nada; devolve os relatórios como rascunho. */
+  dryRun?: boolean;
+  /** Publica mesmo com a trava falhando; cada falha vai para `limitacoes`. */
+  allowIncomplete?: boolean;
+  /** Correção explícita de relatório já publicado (exige `reason`). */
+  correct?: boolean;
+  reason?: string;
 }
 
-export async function runJobEStage2Reports(options: RunStage2Options): Promise<void> {
+export interface ReportDraft {
+  scopeType: string;
+  scopeId: string;
+  sinteticos: unknown;
+  qualidade: unknown;
+  funil: unknown;
+  textoFortes: unknown;
+  textoOps: unknown;
+  preliminar: boolean;
+  limitacoes: string | null;
+  promptVersionSintese: string;
+  model: string;
+}
+
+export interface Stage2Result {
+  drafts: ReportDraft[];
+  published: number;
+  skippedExisting: number;
+  corrected: number;
+}
+
+export async function runJobEStage2Reports(options: RunStage2Options): Promise<Stage2Result> {
   const tenantId = options.tenantId || env.DEFAULT_TENANT_ID;
   const promptVersion = options.promptVersion || STAGE2_PROMPT_VERSION;
   const model = env.OPENAI_MODEL_STAGE2 || "gpt-4.1";
 
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-  });
-
-  if (!tenant) {
-    throw new Error(`Tenant ${tenantId} não encontrado.`);
+  if (options.correct && !options.reason?.trim()) {
+    throw new Error("--correct exige --reason \"texto\".");
   }
+
+  const tenant = await ensureTenant(tenantId);
+
+  // Trava de publicação (checklist §16)
+  const period: Period = { start: options.startDate, end: options.endDate, label: "" };
+  const gate = await checkPublishGate(tenantId, period, STAGE1_PROMPT_VERSION);
+  const gateLimitations: string[] = [];
+  if (!gate.ok) {
+    if (options.dryRun) {
+      console.warn(`[Job E] (rascunho) Trava de publicação falharia:\n - ${gate.problems.join("\n - ")}`);
+    } else if (options.allowIncomplete) {
+      console.warn(`[Job E] Publicando com --allow-incomplete:\n - ${gate.problems.join("\n - ")}`);
+      gateLimitations.push(...gate.problems.map((p) => `Publicado com --allow-incomplete: ${p}`));
+    } else {
+      throw new Error(
+        `Publicação bloqueada:\n - ${gate.problems.join("\n - ")}\nUse --allow-incomplete para publicar mesmo assim (as falhas vão para as limitações).`
+      );
+    }
+  }
+
+  const result: Stage2Result = { drafts: [], published: 0, skippedExisting: 0, corrected: 0 };
 
   const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 
@@ -324,49 +372,73 @@ ${JSON.stringify(sampleInsights, null, 2)}`;
       }
     }
 
-    // F. Persistir snapshot imutável em period_reports
-    await prisma.periodReport.upsert({
-      where: {
-        tenantId_periodStart_periodEnd_scopeType_scopeId: {
-          tenantId,
-          periodStart: options.startDate,
-          periodEnd: options.endDate,
-          scopeType: scope.scopeType,
-          scopeId: scope.scopeId,
-        },
-      },
-      update: {
-        sinteticos: sinteticos as any,
-        qualidade: qualidade as any,
-        funil: funil as any,
-        textoFortes: textoFortes as any,
-        textoOps: textoOps as any,
-        preliminar,
-        limitacoes: preliminar ? "Amostra preliminar com menos de 10 conversas analisadas." : null,
-        promptVersionSintese: promptVersion,
-        model,
-        publishedAt: new Date(),
-      },
-      create: {
+    // F. Persistir (imutável): só cria; correção é explícita e deixa revisão
+    const limitacoesList = [...(preliminar ? ["Amostra preliminar com menos de 10 conversas analisadas."] : []), ...gateLimitations];
+    const data = {
+      sinteticos: sinteticos as any,
+      qualidade: qualidade as any,
+      funil: funil as any,
+      textoFortes: textoFortes as any,
+      textoOps: textoOps as any,
+      preliminar,
+      limitacoes: limitacoesList.length ? limitacoesList.join("\n") : null,
+      promptVersionSintese: promptVersion,
+      model,
+    };
+
+    if (options.dryRun) {
+      result.drafts.push({ scopeType: scope.scopeType, scopeId: scope.scopeId, ...data });
+      continue;
+    }
+
+    const key = {
+      tenantId_periodStart_periodEnd_scopeType_scopeId: {
         tenantId,
         periodStart: options.startDate,
         periodEnd: options.endDate,
         scopeType: scope.scopeType,
         scopeId: scope.scopeId,
-        sinteticos: sinteticos as any,
-        qualidade: qualidade as any,
-        funil: funil as any,
-        textoFortes: textoFortes as any,
-        textoOps: textoOps as any,
-        preliminar,
-        limitacoes: preliminar ? "Amostra preliminar com menos de 10 conversas analisadas." : null,
-        promptVersionSintese: promptVersion,
-        model,
       },
-    });
+    };
+    const existing = await prisma.periodReport.findUnique({ where: key });
+
+    if (existing && !options.correct) {
+      console.log(`[Job E] ${scope.name}: já publicado em ${existing.publishedAt.toISOString()}; mantido sem alteração.`);
+      result.skippedExisting++;
+      continue;
+    }
+
+    if (existing && options.correct) {
+      const { id, revisions: _r, ...snapshot } = existing as any;
+      await prisma.$transaction([
+        prisma.periodReportRevision.create({
+          data: { reportId: existing.id, snapshot: JSON.parse(JSON.stringify(snapshot)), reason: options.reason!.trim() },
+        }),
+        prisma.periodReport.update({
+          where: key,
+          data: { ...data, correctedAt: new Date(), correctionReason: options.reason!.trim() },
+        }),
+      ]);
+      result.corrected++;
+    } else {
+      await prisma.periodReport.create({
+        data: {
+          tenantId,
+          periodStart: options.startDate,
+          periodEnd: options.endDate,
+          scopeType: scope.scopeType,
+          scopeId: scope.scopeId,
+          ...data,
+        },
+      });
+      result.published++;
+    }
 
     console.log(`[Job E] Relatório para ${scope.name} salvo com sucesso. (Nota Geral: ${qualidade.notaGeral}, n=${n})`);
   }
 
-  console.log("[Job E] Todos os relatórios do período foram gerados e persistidos com sucesso!");
+  console.log(
+    `[Job E] Concluído: ${result.published} publicados, ${result.skippedExisting} já existentes mantidos, ${result.corrected} corrigidos${options.dryRun ? `, ${result.drafts.length} rascunhos` : ""}.`
+  );
+  return result;
 }

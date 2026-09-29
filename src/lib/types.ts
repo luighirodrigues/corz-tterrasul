@@ -47,14 +47,16 @@ export interface ReportItem {
   periodEnd: string;
   preliminar: boolean;
   limitacoes?: string | null;
-  notaGeral: number;
+  notaGeral: number | null;
   totalConversas: number;
   medias: CriteriaScores;
   histograma: number[];
   sinteticos: KpiMetrics;
   funil?: FunnelData | null;
-  textoFortes: AiInsight[];
-  textoOps: AiInsight[];
+  textoFortes: AiInsight[] | null;
+  textoOps: AiInsight[] | null;
+  model?: string | null;
+  promptVersionSintese?: string | null;
 }
 
 export interface MessageItem {
@@ -73,13 +75,13 @@ export interface SessionDetail {
   contactName: string;
   contactPhone: string;
   panelName?: string;
-  startAt: string;
-  endAt: string;
-  durationMinutes: number;
+  startAt: string | null;
+  endAt: string | null;
+  durationMinutes: number | null;
   status: string;
-  notaConversa: number;
+  notaConversa: number | null;
   scores: CriteriaScores;
-  resumo1Linha: string;
+  resumo1Linha: string | null;
   evidencias?: Record<string, string>;
   messages: MessageItem[];
 }

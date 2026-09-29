@@ -17,10 +17,16 @@ const envSchema = z.object({
   DEFAULT_TENANT_ID: z.string().default("tterrasul"),
   DEFAULT_TENANT_NAME: z.string().default("Tterrasul"),
   TIMEZONE: z.string().default("America/Sao_Paulo"),
+  PERIOD_WEEK_START: z.coerce.number().int().min(1).max(7).default(3),
+  GO_LIVE_AT: z.string().default(""),
   PANEL_VENDAS_ID: z.string().default(""),
   PANEL_CAMPANHAS_ID: z.string().default(""),
   PANEL_PECAS_ID: z.string().default(""),
   PANEL_OFICINA_ID: z.string().default(""),
+  PANEL_VENDAS_TITLE: z.string().default("Vendas"),
+  PANEL_CAMPANHAS_TITLE: z.string().default("Campanhas"),
+  PANEL_PECAS_TITLE: z.string().default("Peças"),
+  PANEL_OFICINA_TITLE: z.string().default("Oficina"),
   IGNORED_LOST_REASONS: z.string().default("falta de peca fornecedor,cancelamento de fabrica"),
 });
 

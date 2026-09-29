@@ -6,79 +6,82 @@ import { calculateSynthetics } from "./jobs/job-c-synthetics.js";
 import { runJobDStage1Analysis } from "./jobs/job-d-stage1-analysis.js";
 import { runJobEStage2Reports } from "./jobs/job-e-stage2-report.js";
 import { exportReportHtml } from "./report/html-reporter.js";
+import { ensureTenant } from "./domain/tenant.js";
+import { lastClosedPeriod, periodContaining, type Period } from "./domain/period.js";
+import { resolveScopeTitle } from "./domain/scope-title.js";
 
-async function resolveReportMetadata(
-  tenantId: string,
-  rep: any
-): Promise<{ title: string; fileName: string }> {
-  const dateStr = rep.periodStart.toISOString().split("T")[0];
-  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+function argValue(args: string[], flag: string): string | undefined {
+  const i = args.indexOf(flag);
+  return i !== -1 ? args[i + 1] : undefined;
+}
 
-  if (rep.scopeType === "geral") {
-    return {
-      title: "Visão Geral da Operação",
-      fileName: `relatorio_geral_operacao_${dateStr}.html`,
-    };
+/**
+ * Janela do relatório: `--week YYYY-MM-DD` (qualquer data dentro da semana-alvo)
+ * ou, sem argumento, a última janela já encerrada. Sempre no fuso do tenant.
+ */
+async function resolveReportPeriod(tenantId: string, args: string[]): Promise<Period> {
+  const tenant = await ensureTenant(tenantId);
+  const week = argValue(args, "--week");
+  if (week) {
+    const ref = new Date(`${week}T12:00:00`);
+    if (isNaN(ref.getTime())) throw new Error(`--week inválido: ${week} (use YYYY-MM-DD)`);
+    return periodContaining(ref, tenant.timezone, tenant.periodWeekStart);
   }
+  return lastClosedPeriod(new Date(), tenant.timezone, tenant.periodWeekStart);
+}
 
-  if (rep.scopeType === "divisao") {
-    if (rep.scopeId === "carros") {
-      return {
-        title: "Divisão Veículos (Vendas & Campanhas)",
-        fileName: `relatorio_divisao_veiculos_${dateStr}.html`,
-      };
+async function publishPeriod(tenantId: string, args: string[], period: Period): Promise<void> {
+  const dryRun = args.includes("--dry-run");
+  const correct = args.includes("--correct");
+  const allowIncomplete = args.includes("--allow-incomplete");
+  const reason = argValue(args, "--reason");
+
+  console.log(`Janela: ${period.label} (${period.start.toISOString()} → ${period.end.toISOString()})`);
+
+  const result = await runJobEStage2Reports({
+    tenantId,
+    startDate: period.start,
+    endDate: period.end,
+    dryRun,
+    correct,
+    reason,
+    allowIncomplete,
+  });
+
+  const [tenant, agents] = await Promise.all([
+    prisma.tenant.findUnique({ where: { id: tenantId } }),
+    prisma.agent.findMany({ where: { tenantId }, select: { externalId: true, name: true } }),
+  ]);
+  const agentNames = new Map(agents.map((a) => [a.externalId, a.name]));
+  const day = period.label.split(" a ")[0];
+
+  if (dryRun) {
+    for (const d of result.drafts) {
+      const { title, key } = resolveScopeTitle(d, tenant, agentNames);
+      const draft = {
+        id: "draft",
+        tenantId,
+        periodStart: period.start,
+        periodEnd: period.end,
+        publishedAt: new Date(),
+        correctedAt: null,
+        correctionReason: null,
+        ...d,
+      } as any;
+      const file = await exportReportHtml(draft, `RASCUNHO — ${title}`, "./reports/rascunho", `rascunho_${d.scopeType}_${key}_${day}.html`);
+      console.log(`Rascunho (não publicado): ${file}`);
     }
-    if (rep.scopeId === "pecas") {
-      return {
-        title: "Divisão Pós-Venda (Peças & Oficina)",
-        fileName: `relatorio_divisao_posvenda_${dateStr}.html`,
-      };
-    }
-    return {
-      title: `Divisão ${rep.scopeId.toUpperCase()}`,
-      fileName: `relatorio_divisao_${rep.scopeId}_${dateStr}.html`,
-    };
+    return;
   }
 
-  if (rep.scopeType === "painel") {
-    let name = "Painel CRM";
-    let key = rep.scopeId;
-    if (rep.scopeId === tenant?.panelVendasId) {
-      name = "Painel CRM - Vendas";
-      key = "vendas";
-    } else if (rep.scopeId === tenant?.panelCampanhasId) {
-      name = "Painel CRM - Campanhas";
-      key = "campanhas";
-    } else if (rep.scopeId === tenant?.panelPecasId) {
-      name = "Painel CRM - Peças";
-      key = "pecas";
-    } else if (rep.scopeId === tenant?.panelOficinaId) {
-      name = "Painel CRM - Oficina";
-      key = "oficina";
-    }
-    return {
-      title: name,
-      fileName: `relatorio_painel_${key}_${dateStr}.html`,
-    };
+  const reports = await prisma.periodReport.findMany({
+    where: { tenantId, periodStart: period.start, periodEnd: period.end },
+  });
+  for (const rep of reports) {
+    const { title, key } = resolveScopeTitle(rep, tenant, agentNames);
+    const file = await exportReportHtml(rep, title, "./reports", `relatorio_${rep.scopeType}_${key}_${day}.html`);
+    console.log(`Relatório HTML: ${file}`);
   }
-
-  if (rep.scopeType === "agente") {
-    const session = await prisma.session.findFirst({
-      where: { agentExternalId: rep.scopeId },
-      select: { agentName: true },
-    });
-    const agentName = session?.agentName || rep.scopeId;
-    const safeName = agentName.toLowerCase().replace(/[^a-z0-9]/g, "_");
-    return {
-      title: `Atendente - ${agentName}`,
-      fileName: `relatorio_agente_${safeName}_${dateStr}.html`,
-    };
-  }
-
-  return {
-    title: `${rep.scopeType.toUpperCase()} - ${rep.scopeId}`,
-    fileName: `relatorio_${rep.scopeType}_${rep.scopeId}_${dateStr}.html`,
-  };
 }
 
 async function main() {
@@ -90,9 +93,9 @@ async function main() {
   switch (command) {
     case "sync": {
       console.log("=== EXECUTANDO SYNC COMPLETO (JOBS A & B) ===");
-      const daysArgIdx = args.indexOf("--days");
       const isAll = args.includes("--all");
-      const days = isAll ? undefined : (daysArgIdx !== -1 ? parseInt(args[daysArgIdx + 1], 10) : 7);
+      const daysArg = argValue(args, "--days");
+      const days = isAll ? undefined : daysArg ? parseInt(daysArg, 10) : 7;
       if (days) {
         console.log(`Buscando sessões e cards dos últimos ${days} dias... (use --days N ou --all para histórico completo)`);
       } else {
@@ -106,14 +109,9 @@ async function main() {
 
     case "cards": {
       console.log("=== SINCRONIZAÇÃO DE CARDS CRM (JOB B) ===");
-      const daysArgIdx = args.indexOf("--days");
       const isAll = args.includes("--all");
-      const days = isAll ? undefined : (daysArgIdx !== -1 ? parseInt(args[daysArgIdx + 1], 10) : 7);
-      if (days) {
-        console.log(`Buscando cards dos últimos ${days} dias...`);
-      } else {
-        console.log("Buscando histórico completo de cards...");
-      }
+      const daysArg = argValue(args, "--days");
+      const days = isAll ? undefined : daysArg ? parseInt(daysArg, 10) : 7;
       await runJobBSyncCards({ tenantId, lookbackDays: days });
       console.log("=== SYNC DE CARDS FINALIZADO ===");
       break;
@@ -121,116 +119,69 @@ async function main() {
 
     case "synthetics": {
       console.log("=== CÁLCULO DE MÉTRICAS SINTÉTICAS (JOB C) ===");
-      const daysArgIdx = args.indexOf("--days");
-      const days = daysArgIdx !== -1 ? parseInt(args[daysArgIdx + 1], 10) : 7;
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-
-      console.log(`Calculando para os últimos ${days} dias (${startDate.toISOString().split("T")[0]} a ${endDate.toISOString().split("T")[0]})...`);
-      const metrics = await calculateSynthetics({
-        tenantId,
-        startDate,
-        endDate,
-      });
+      const period = await resolveReportPeriod(tenantId, args);
+      console.log(`Janela: ${period.label}`);
+      const metrics = await calculateSynthetics({ tenantId, startDate: period.start, endDate: period.end });
       console.table(metrics);
       break;
     }
 
     case "stage1": {
       console.log("=== IA ESTÁGIO 1: ANÁLISE DE CONVERSAS FECHADAS (JOB D) ===");
-      const limitArgIdx = args.indexOf("--limit");
-      const limit = limitArgIdx !== -1 ? parseInt(args[limitArgIdx + 1], 10) : undefined;
-      await runJobDStage1Analysis({ tenantId, limit });
+      const limit = argValue(args, "--limit");
+      await runJobDStage1Analysis({ tenantId, limit: limit ? parseInt(limit, 10) : undefined });
       break;
     }
 
     case "report": {
       console.log("=== IA ESTÁGIO 2 & RELATÓRIOS DO PERÍODO (JOB E) ===");
-      const daysArgIdx = args.indexOf("--days");
-      const days = daysArgIdx !== -1 ? parseInt(args[daysArgIdx + 1], 10) : 7;
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-
-      console.log(`Gerando relatórios para os últimos ${days} dias...`);
-      await runJobEStage2Reports({
-        tenantId,
-        startDate,
-        endDate,
-      });
-
-      // Exportar HTMLs
-      const reports = await prisma.periodReport.findMany({
-        where: { tenantId, periodStart: startDate, periodEnd: endDate },
-      });
-
-      for (const rep of reports) {
-        const { title, fileName } = await resolveReportMetadata(tenantId, rep);
-        const filePath = await exportReportHtml(rep, title, "./reports", fileName);
-        console.log(`Relatório HTML gerado em: ${filePath}`);
-      }
+      const period = await resolveReportPeriod(tenantId, args);
+      await publishPeriod(tenantId, args, period);
       break;
     }
 
     case "pipeline": {
       console.log("=== INICIANDO PIPELINE COMPLETO FLW QUALITY ===");
-      const daysArgIdx = args.indexOf("--days");
-      const days = daysArgIdx !== -1 ? parseInt(args[daysArgIdx + 1], 10) : 7;
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
+      const period = await resolveReportPeriod(tenantId, args);
+      console.log(`Janela: ${period.label}`);
 
-      console.log(`Janela: ${startDate.toISOString().split("T")[0]} até ${endDate.toISOString().split("T")[0]} (${days} dias)`);
+      // Provisório até o sync incremental por UpdatedAt (M06): recua 30 dias para pegar
+      // sessões criadas antes da janela e encerradas dentro dela.
+      const syncFrom = new Date(period.start.getTime() - 30 * 24 * 3600 * 1000).toISOString();
+      const syncTo = new Date().toISOString();
 
-      // 1. Sync A & B
       console.log("\n[Passo 1/4] Sincronizando FLW (Sessões e Cards)...");
-      await runJobASyncSessions({
-        tenantId,
-        fromDate: startDate.toISOString(),
-        toDate: endDate.toISOString(),
-      });
-      await runJobBSyncCards({
-        tenantId,
-        fromDate: startDate.toISOString(),
-        toDate: endDate.toISOString(),
-      });
+      await runJobASyncSessions({ tenantId, fromDate: syncFrom, toDate: syncTo });
+      await runJobBSyncCards({ tenantId, fromDate: syncFrom, toDate: syncTo });
 
-      // 2. IA Estágio 1
       console.log("\n[Passo 2/4] Executando Análise de IA Estágio 1...");
       await runJobDStage1Analysis({ tenantId });
 
-      // 3. IA Estágio 2 e Relatórios
       console.log("\n[Passo 3/4] Agregando e Gerando Síntese Estágio 2...");
-      await runJobEStage2Reports({ tenantId, startDate, endDate });
+      console.log("\n[Passo 4/4] Exportando relatórios...");
+      await publishPeriod(tenantId, args, period);
 
-      // 4. Exportação Visual HTML
-      console.log("\n[Passo 4/4] Exportando Relatórios no Padrão Pry...");
-      const reports = await prisma.periodReport.findMany({
-        where: { tenantId, periodStart: startDate, periodEnd: endDate },
-      });
-
-      for (const rep of reports) {
-        const { title, fileName } = await resolveReportMetadata(tenantId, rep);
-        const filePath = await exportReportHtml(rep, title, "./reports", fileName);
-        console.log(`📄 Relatório disponível: ${filePath}`);
-      }
-
-      console.log("\n=== PIPELINE CONCLUÍDO COM SUCESSO! ===");
+      console.log("\n=== PIPELINE CONCLUÍDO ===");
       break;
     }
 
     default: {
       console.log(`
-Uso: npm run <comando>
+Uso: pnpm <comando> [opções]
 
-Comandos disponíveis:
-  npm run job:sync        Sincroniza sessões, mensagens e painéis CRM da FLW (Jobs A & B)
-  npm run job:cards       Sincroniza apenas cards de painéis CRM (Job B)
-  npm run job:synthetics  Calcula e exibe métricas sintéticas (Job C)
-  npm run job:stage1      Executa análise de qualidade IA com Structured Outputs (Job D)
-  npm run job:report      Gera relatórios agregados e síntese gerencial de IA (Job E)
-  npm run pipeline        Executa todo o fluxo de ponta a ponta e gera HTMLs no padrão Pry
+Comandos:
+  job:sync        Sincroniza sessões, mensagens e cards da FLW (Jobs A & B)   [--days N | --all]
+  job:cards       Sincroniza apenas os cards dos painéis (Job B)              [--days N | --all]
+  job:synthetics  Métricas sintéticas da janela (Job C)                       [--week YYYY-MM-DD]
+  job:stage1      Análise de IA por sessão (Job D)                            [--limit N]
+  job:report      Publica os relatórios da janela (Job E)
+  pipeline        Sync + IA + relatório da janela
+
+Opções do report/pipeline:
+  --week YYYY-MM-DD      Qualquer data dentro da semana-alvo (padrão: última janela encerrada)
+  --dry-run              Não grava; gera rascunhos em ./reports/rascunho
+  --allow-incomplete     Publica mesmo com a trava falhando (falhas vão para as limitações)
+  --correct --reason "." Corrige relatório já publicado (guarda a versão anterior)
 `);
       break;
     }
@@ -239,7 +190,7 @@ Comandos disponíveis:
 
 main()
   .catch((err) => {
-    console.error("Erro na execução do CLI:", err);
+    console.error("Erro na execução do CLI:", err.message ?? err);
     process.exit(1);
   })
   .finally(async () => {
