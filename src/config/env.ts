@@ -15,6 +15,8 @@ const envSchema = z.object({
   OPENAI_MODEL_STAGE1: z.string().default("gpt-4.1-mini"),
   OPENAI_MODEL_STAGE2: z.string().default("gpt-4.1"),
   OPENAI_MAX_USD_PER_RUN: z.coerce.number().default(50.0),
+  OPENAI_TIMEOUT_STAGE1_MS: z.coerce.number().default(60000),
+  OPENAI_TIMEOUT_STAGE2_MS: z.coerce.number().default(120000),
   DEFAULT_TENANT_ID: z.string().default("tterrasul"),
   DEFAULT_TENANT_NAME: z.string().default("Tterrasul"),
   TIMEZONE: z.string().default("America/Sao_Paulo"),
@@ -28,7 +30,9 @@ const envSchema = z.object({
   PANEL_CAMPANHAS_TITLE: z.string().default("Campanhas"),
   PANEL_PECAS_TITLE: z.string().default("Peças"),
   PANEL_OFICINA_TITLE: z.string().default("Oficina"),
-  IGNORED_LOST_REASONS: z.string().default("falta de peca fornecedor,cancelamento de fabrica"),
+  IGNORED_LOST_REASONS: z.string().default(""),
+  HYGIENE_LOST_REASONS: z.string().default(""),
+  CRITERION_MIN_COVERAGE: z.coerce.number().min(0).max(1).default(0.3),
 });
 
 export const env = envSchema.parse(process.env);

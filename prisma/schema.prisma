@@ -19,7 +19,8 @@ model Tenant {
   panelCampanhasId   String?  @map("panel_campanhas_id")
   panelPecasId       String?  @map("panel_pecas_id")
   panelOficinaId     String?  @map("panel_oficina_id")
-  ignoredLostReasons String?  @map("ignored_lost_reasons") // motivos separados por vírgula
+  ignoredLostReasons String?  @map("ignored_lost_reasons") // fora do controle (nomes exatos, separados por vírgula)
+  hygieneLostReasons String?  @map("hygiene_lost_reasons") // higienização: duplicado, já é cliente...
   timezone           String   @default("America/Sao_Paulo")
   periodWeekStart    Int      @default(3) @map("period_week_start") // ISO: 3 = quarta
   goLiveAt           DateTime? @map("go_live_at")

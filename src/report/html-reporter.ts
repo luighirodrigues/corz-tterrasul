@@ -18,7 +18,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
   const textoFortes = (report.textoFortes as any[]) || [];
   const textoOps = (report.textoOps as any[]) || [];
 
-  const nota = qualidade.notaGeral ?? 0;
+  const nota: number | null = qualidade.notaGeral ?? null;
   const n = qualidade.n ?? 0;
   const medias = qualidade.medias ?? {};
   const histograma: number[] = qualidade.histograma || new Array(11).fill(0);
@@ -132,11 +132,11 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
     }
     .circle-bar {
       fill: none;
-      stroke: ${nota >= 8 ? "var(--success)" : nota >= 6 ? "var(--primary)" : "var(--warning)"};
+      stroke: ${nota == null ? "#cbd5e1" : nota >= 8 ? "var(--success)" : nota >= 6 ? "var(--primary)" : "var(--warning)"};
       stroke-width: 14;
       stroke-linecap: round;
       stroke-dasharray: 440;
-      stroke-dashoffset: ${440 - (440 * (nota / 10))};
+      stroke-dashoffset: ${440 - (440 * ((nota ?? 0) / 10))};
       transition: stroke-dashoffset 0.8s ease;
     }
     .circle-content {
@@ -281,12 +281,12 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Resp. Cliente</div>
-        <div class="kpi-value">${sinteticos.respClientePct}%</div>
+        <div class="kpi-value">${sinteticos.respClientePct ?? "N/D"}${sinteticos.respClientePct == null ? "" : "%"}</div>
         <div class="kpi-sub">Atendimentos respondidos</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Sem Resposta</div>
-        <div class="kpi-value" style="color: ${sinteticos.semRespostaPct > 15 ? 'var(--danger)' : 'inherit'}">${sinteticos.semRespostaPct}%</div>
+        <div class="kpi-value" style="color: ${(sinteticos.semRespostaPct ?? 0) > 15 ? 'var(--danger)' : 'inherit'}">${sinteticos.semRespostaPct ?? "N/D"}${sinteticos.semRespostaPct == null ? "" : "%"}</div>
         <div class="kpi-sub">Cliente ficou no vácuo</div>
       </div>
       <div class="kpi-card">
@@ -296,7 +296,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Reativação</div>
-        <div class="kpi-value">${sinteticos.reativacaoPct}%</div>
+        <div class="kpi-value">${sinteticos.reativacaoPct ?? "N/D"}${sinteticos.reativacaoPct == null ? "" : "%"}</div>
         <div class="kpi-sub">Retomada após ≥ 24h</div>
       </div>
     </div>
@@ -313,7 +313,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
               <circle class="circle-bar" cx="80" cy="80" r="70"></circle>
             </svg>
             <div class="circle-content">
-              <span class="ring-score">${nota.toFixed(1)}</span>
+              <span class="ring-score">${nota == null ? "—" : nota.toFixed(1)}</span>
               <span class="ring-max">de 10</span>
             </div>
           </div>

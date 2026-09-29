@@ -450,8 +450,8 @@ export default function DashboardPage() {
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-400 uppercase font-semibold block">Sem Resposta</span>
-                          <span className={`font-bold ${ag.sinteticos.semRespostaPct > 30 ? "text-rose-600" : "text-slate-800"}`}>
-                            {ag.sinteticos.semRespostaPct}%
+                          <span className={`font-bold ${(ag.sinteticos.semRespostaPct ?? 0) > 30 ? "text-rose-600" : "text-slate-800"}`}>
+                            {ag.sinteticos.semRespostaPct == null ? "N/D" : `${ag.sinteticos.semRespostaPct}%`}
                           </span>
                         </div>
                       </div>

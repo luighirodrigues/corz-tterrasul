@@ -12,10 +12,10 @@ export interface KpiMetrics {
   n: number;
   tmrMedioFormatado: string;
   ftrMedianaFormatada: string;
-  respClientePct: number;
-  semRespostaPct: number;
+  respClientePct: number | null;
+  semRespostaPct: number | null;
   taxaFechamentoPct: number | null;
-  reativacaoPct: number;
+  reativacaoPct: number | null;
 }
 
 export interface AiInsight {
@@ -35,6 +35,7 @@ export interface FunnelData {
   won: number;
   lost: number;
   lostReasons: Record<string, number>;
+  desconsideradas?: { foraDoControle: number; higienizacao: number };
 }
 
 export interface ReportItem {

@@ -7,59 +7,31 @@ import { STAGE1_PROMPT_VERSION } from "./job-d-stage1-analysis.js";
 import { checkPublishGate } from "../domain/publish-gate.js";
 import type { Period } from "../domain/period.js";
 import { ensureTenant } from "../domain/tenant.js";
+import { aggregateQuality, CRITERION_LABEL, pickCases, type AnalysisRow, type Criterion } from "../domain/aggregate.js";
+import { parseList, tallyCards } from "../domain/lost-reasons.js";
+import { resolveSessionPanel } from "../domain/session-panel.js";
+import {
+  buildStage2Input,
+  finalizeStage2,
+  STAGE2_PROMPT_VERSION,
+  STAGE2_SYSTEM_PROMPT,
+  stage2JsonSchema,
+  type RawStage2Output,
+} from "../domain/stage2.js";
 
-export const STAGE2_PROMPT_VERSION = "stage2-v1";
+export { STAGE2_PROMPT_VERSION };
 
-const BulletItemSchema = z.object({
-  n_casos: z.number(),
+const RawItemSchema = z.object({
+  criterio: z.enum(["atrito", "solucao", "necessidade", "proximoPasso", "resolvida"]),
+  faixa: z.enum(["alto", "baixo"]),
   texto: z.string(),
-  script_sugerido: z.string().nullable().optional(),
+  script_sugerido: z.string().nullable(),
 });
 
 export const Stage2OutputSchema = z.object({
-  pontos_fortes: z.array(BulletItemSchema),
-  oportunidades: z.array(BulletItemSchema),
+  pontos_fortes: z.array(RawItemSchema),
+  oportunidades: z.array(RawItemSchema),
 });
-
-export type Stage2Output = z.infer<typeof Stage2OutputSchema>;
-
-const stage2JsonSchema = {
-  name: "stage2_managerial_synthesis",
-  strict: true,
-  schema: {
-    type: "object",
-    properties: {
-      pontos_fortes: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            n_casos: { type: "number" },
-            texto: { type: "string" },
-            script_sugerido: { type: ["string", "null"] },
-          },
-          required: ["n_casos", "texto", "script_sugerido"],
-          additionalProperties: false,
-        },
-      },
-      oportunidades: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            n_casos: { type: "number" },
-            texto: { type: "string" },
-            script_sugerido: { type: ["string", "null"] },
-          },
-          required: ["n_casos", "texto", "script_sugerido"],
-          additionalProperties: false,
-        },
-      },
-    },
-    required: ["pontos_fortes", "oportunidades"],
-    additionalProperties: false,
-  },
-};
 
 export interface ReportScope {
   scopeType: "geral" | "divisao" | "painel" | "agente";
@@ -104,16 +76,28 @@ export interface Stage2Result {
   corrected: number;
 }
 
+const fmtPct = (x: number) => `${Math.round(x * 100)}%`;
+
 export async function runJobEStage2Reports(options: RunStage2Options): Promise<Stage2Result> {
   const tenantId = options.tenantId || env.DEFAULT_TENANT_ID;
   const promptVersion = options.promptVersion || STAGE2_PROMPT_VERSION;
   const model = env.OPENAI_MODEL_STAGE2 || "gpt-4.1";
 
   if (options.correct && !options.reason?.trim()) {
-    throw new Error("--correct exige --reason \"texto\".");
+    throw new Error('--correct exige --reason "texto".');
   }
 
   const tenant = await ensureTenant(tenantId);
+  const lists = {
+    outOfControl: parseList(tenant.ignoredLostReasons),
+    hygiene: parseList(tenant.hygieneLostReasons),
+  };
+  const tenantPanelIds = [
+    tenant.panelVendasId,
+    tenant.panelCampanhasId,
+    tenant.panelPecasId,
+    tenant.panelOficinaId,
+  ].filter((id): id is string => !!id);
 
   // Trava de publicação (checklist §16)
   const period: Period = { start: options.startDate, end: options.endDate, label: "" };
@@ -133,62 +117,46 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
   }
 
   const result: Stage2Result = { drafts: [], published: 0, skippedExisting: 0, corrected: 0 };
-
-  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+  const openai = env.OPENAI_API_KEY
+    ? new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: env.OPENAI_TIMEOUT_STAGE2_MS, maxRetries: 3 })
+    : null;
 
   console.log(`[Job E] Iniciando relatórios do período: ${options.startDate.toISOString()} até ${options.endDate.toISOString()}`);
 
-  // 1. Definir os escopos para relatório
-  const scopes: ReportScope[] = [
-    { scopeType: "geral", scopeId: "geral", name: "Visão Geral da Operação" },
-  ];
+  // 1. Escopos
+  const scopes: ReportScope[] = [{ scopeType: "geral", scopeId: "geral", name: "Visão Geral da Operação" }];
 
-  // Divisões
   const carPanels = [tenant.panelVendasId, tenant.panelCampanhasId].filter((id): id is string => !!id);
   if (carPanels.length > 0) {
-    scopes.push({
-      scopeType: "divisao",
-      scopeId: "carros",
-      name: "Venda de Veículos",
-      panelIds: carPanels,
-    });
+    scopes.push({ scopeType: "divisao", scopeId: "carros", name: "Venda de Veículos", panelIds: carPanels });
   }
-
   const partsPanels = [tenant.panelPecasId, tenant.panelOficinaId].filter((id): id is string => !!id);
   if (partsPanels.length > 0) {
-    scopes.push({
-      scopeType: "divisao",
-      scopeId: "pecas",
-      name: "Peças e Oficina",
-      panelIds: partsPanels,
-    });
+    scopes.push({ scopeType: "divisao", scopeId: "pecas", name: "Peças e Oficina", panelIds: partsPanels });
+  }
+  const panelScopes: Array<[string | null, string]> = [
+    [tenant.panelVendasId, "Painel Vendas"],
+    [tenant.panelCampanhasId, "Painel Campanhas"],
+    [tenant.panelPecasId, "Painel Peças"],
+    [tenant.panelOficinaId, "Painel Oficina"],
+  ];
+  for (const [id, name] of panelScopes) {
+    if (id) scopes.push({ scopeType: "painel", scopeId: id, name, panelIds: [id] });
   }
 
-  // Painéis individuais
-  if (tenant.panelVendasId) {
-    scopes.push({ scopeType: "painel", scopeId: tenant.panelVendasId, name: "Painel Vendas", panelIds: [tenant.panelVendasId] });
-  }
-  if (tenant.panelCampanhasId) {
-    scopes.push({ scopeType: "painel", scopeId: tenant.panelCampanhasId, name: "Painel Campanhas", panelIds: [tenant.panelCampanhasId] });
-  }
-  if (tenant.panelPecasId) {
-    scopes.push({ scopeType: "painel", scopeId: tenant.panelPecasId, name: "Painel Peças", panelIds: [tenant.panelPecasId] });
-  }
-  if (tenant.panelOficinaId) {
-    scopes.push({ scopeType: "painel", scopeId: tenant.panelOficinaId, name: "Painel Oficina", panelIds: [tenant.panelOficinaId] });
-  }
-
-  // Agentes com atendimentos na janela
+  // Atendentes: com sessão encerrada OU iniciada na janela (M13)
   const agentsWithSessions = await prisma.session.findMany({
     where: {
       tenantId,
-      startAt: { gte: options.startDate, lte: options.endDate },
       agentExternalId: { not: null },
+      OR: [
+        { status: "COMPLETED", endAt: { gte: options.startDate, lte: options.endDate } },
+        { startAt: { gte: options.startDate, lte: options.endDate } },
+      ],
     },
     select: { agentExternalId: true, agentName: true },
     distinct: ["agentExternalId"],
   });
-
   for (const ag of agentsWithSessions) {
     if (ag.agentExternalId) {
       scopes.push({
@@ -204,101 +172,72 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
 
   for (const scope of scopes) {
     console.log(`[Job E] Processando escopo: [${scope.scopeType}] ${scope.name} (${scope.scopeId})...`);
+    const limitations: string[] = [...gateLimitations];
 
-    // A. Filtrar sessões analisadas para o escopo
-    const sessionWhere: any = {
-      tenantId,
-      startAt: { gte: options.startDate, lte: options.endDate },
-      analyses: {
-        some: {
-          status: "done",
-          promptVersion: STAGE1_PROMPT_VERSION,
-        },
-      },
-    };
-
-    if (scope.agentExternalId) {
-      sessionWhere.agentExternalId = scope.agentExternalId;
-    }
-    if (scope.panelIds && scope.panelIds.length > 0) {
-      sessionWhere.panelCards = {
-        some: {
-          panelId: { in: scope.panelIds },
-        },
-      };
-    }
-
+    // A. Qualidade: sessões COMPLETED encerradas na janela (M13)
     const sessions = await prisma.session.findMany({
-      where: sessionWhere,
+      where: {
+        tenantId,
+        status: "COMPLETED",
+        endAt: { gte: options.startDate, lte: options.endDate },
+        ...(scope.agentExternalId ? { agentExternalId: scope.agentExternalId } : {}),
+        ...(scope.panelIds?.length ? { panelCards: { some: { panelId: { in: scope.panelIds } } } } : {}),
+      },
       include: {
-        analyses: {
-          where: { status: "done", promptVersion: STAGE1_PROMPT_VERSION },
-        },
+        analyses: { where: { promptVersion: STAGE1_PROMPT_VERSION } },
+        panelCards: { select: { panelId: true, panelTitle: true, stepTitle: true, status: true, flwUpdatedAt: true } },
       },
     });
 
-    const n = sessions.length;
-    const preliminar = n < 10;
-
-    // B. Médias dos 5 critérios e Nota Geral
-    let sumAtrito = 0, countAtrito = 0;
-    let sumSolucao = 0, countSolucao = 0;
-    let sumNecessidade = 0, countNecessidade = 0;
-    let sumProximoPasso = 0, countProximoPasso = 0;
-    let sumResolvida = 0, countResolvida = 0;
-    let sumNotaGeral = 0;
-
-    // Histograma de 0 a 10 (11 posições)
-    const histograma = new Array(11).fill(0);
-    const sampleInsights: Array<{ resumo: string; evidencias: any }> = [];
+    const rows: AnalysisRow[] = [];
+    let nSkipped = 0;
+    let nError = 0;
+    let nPending = 0;
+    let nSemEsteira = 0;
+    let nDuplicateCards = 0;
 
     for (const s of sessions) {
-      const a = s.analyses[0];
-      if (!a) continue;
+      const info = resolveSessionPanel(s.panelCards, tenantPanelIds);
+      if (info.panelId === null) nSemEsteira++;
+      if (info.duplicateCards > 0) nDuplicateCards++;
 
-      if (a.scoreAtrito !== null) { sumAtrito += a.scoreAtrito; countAtrito++; }
-      if (a.scoreSolucao !== null) { sumSolucao += a.scoreSolucao; countSolucao++; }
-      if (a.scoreNecessidade !== null) { sumNecessidade += a.scoreNecessidade; countNecessidade++; }
-      if (a.scoreProximoPasso !== null) { sumProximoPasso += a.scoreProximoPasso; countProximoPasso++; }
-      if (a.scoreResolvida !== null) { sumResolvida += a.scoreResolvida; countResolvida++; }
-
-      if (a.notaConversa !== null) {
-        sumNotaGeral += a.notaConversa;
-        const rounded = Math.min(10, Math.max(0, Math.round(a.notaConversa)));
-        histograma[rounded]++;
-      }
-
-      if (sampleInsights.length < 10 && (a.resumo1Linha || a.evidencias)) {
-        sampleInsights.push({
-          resumo: a.resumo1Linha || "",
-          evidencias: a.evidencias,
+      const a = s.analyses.find((x) => x.status === "done");
+      if (a) {
+        rows.push({
+          scores: {
+            atrito: a.scoreAtrito,
+            solucao: a.scoreSolucao,
+            necessidade: a.scoreNecessidade,
+            proximoPasso: a.scoreProximoPasso,
+            resolvida: a.scoreResolvida,
+          },
+          resumo: a.resumo1Linha,
+          evidencias: (a.evidencias as Record<string, string> | null) ?? null,
         });
-      }
+      } else if (s.analyses.some((x) => x.status === "skipped")) nSkipped++;
+      else if (s.analyses.some((x) => x.status === "error")) nError++;
+      else nPending++;
     }
 
-    const qualidade = {
-      n,
-      notaGeral: n > 0 ? Number((sumNotaGeral / n).toFixed(1)) : 0,
-      medias: {
-        atrito: countAtrito > 0 ? Number((sumAtrito / countAtrito).toFixed(1)) : null,
-        solucao: countSolucao > 0 ? Number((sumSolucao / countSolucao).toFixed(1)) : null,
-        necessidade: countNecessidade > 0 ? Number((sumNecessidade / countNecessidade).toFixed(1)) : null,
-        proximoPasso: countProximoPasso > 0 ? Number((sumProximoPasso / countProximoPasso).toFixed(1)) : null,
-        resolvida: countResolvida > 0 ? Number((sumResolvida / countResolvida).toFixed(1)) : null,
-      },
-      histograma,
-    };
+    const qualidade = aggregateQuality(rows, {
+      minCoverage: env.CRITERION_MIN_COVERAGE,
+      n: sessions.length,
+      nSkipped,
+      nError,
+      nSemEsteira: scope.panelIds ? 0 : nSemEsteira,
+    });
+    const preliminar = qualidade.nComNota < 10;
 
-    // C. Métricas sintéticas via Job C
+    // B. Sintéticos (Job C) com os mesmos painéis do escopo
     const sinteticos = await calculateSynthetics({
       tenantId,
       startDate: options.startDate,
       endDate: options.endDate,
       agentExternalId: scope.agentExternalId,
-      panelId: scope.panelIds && scope.panelIds.length === 1 ? scope.panelIds[0] : undefined,
+      panelIds: scope.panelIds,
     });
 
-    // D. Funil CRM
+    // C. Funil CRM (cards criados na janela; status ATUAL do card)
     let funil: any = null;
     if (scope.panelIds && scope.panelIds.length > 0) {
       const cards = await prisma.panelCard.findMany({
@@ -309,71 +248,100 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
         },
         select: { status: true, stepTitle: true, lostReason: true },
       });
-
       const etapas: Record<string, number> = {};
       const lostReasons: Record<string, number> = {};
-      let won = 0, lost = 0, open = 0;
-
       for (const c of cards) {
         if (c.stepTitle) etapas[c.stepTitle] = (etapas[c.stepTitle] || 0) + 1;
-        if (c.status.toUpperCase() === "WON") won++;
-        else if (c.status.toUpperCase() === "LOST") {
-          lost++;
-          if (c.lostReason) lostReasons[c.lostReason] = (lostReasons[c.lostReason] || 0) + 1;
-        } else open++;
+        if (c.status.toUpperCase() === "LOST" && c.lostReason) {
+          lostReasons[c.lostReason] = (lostReasons[c.lostReason] || 0) + 1;
+        }
       }
-
-      funil = { etapas, open, won, lost, lostReasons };
+      const t = tallyCards(cards, lists);
+      funil = {
+        etapas,
+        open: t.open,
+        won: t.won,
+        lost: t.lost,
+        lostReasons,
+        desconsideradas: { foraDoControle: t.lostOutOfControl, higienizacao: t.lostHygiene },
+      };
     }
 
-    // E. IA Estágio 2 (Síntese Gerencial)
-    let textoFortes: any = [];
-    let textoOps: any = [];
+    // D. IA estágio 2: recebe contagens já calculadas; o número do bullet vem do código
+    let textoFortes: unknown = null;
+    let textoOps: unknown = null;
 
-    if (openai && n > 0) {
+    if (qualidade.nComNota === 0) {
+      textoFortes = [];
+      textoOps = [];
+    } else if (!openai) {
+      limitations.push("Síntese de IA indisponível: OPENAI_API_KEY não configurada.");
+    } else {
       try {
-        const stage2System = `Você escreve feedback gerencial com base em agregados já calculados de atendimento via WhatsApp.
-Regras fundamentais:
-1. NÃO recalcule notas. Use as médias fornecidas.
-2. Cada bullet deve citar explicitamente quantidades comprovadas nos dados fornecidos (exemplo: "Em 6 das ${n} conversas analisadas...").
-3. Em oportunidades, inclua sempre que relevante uma frase pronta de script recomendada para o atendente.
-4. Jamais use nomes de clientes, CPFs ou telefones.
-5. Não invente contagens não sustentadas pelos resumos e agregados.`;
-
-        const stage2User = `Escopo: ${scope.name}
-Total de Conversas Analisadas: ${n}
-Nota Geral (0-10): ${qualidade.notaGeral}
-Médias dos Critérios: ${JSON.stringify(qualidade.medias)}
-Histograma de Notas: ${JSON.stringify(qualidade.histograma)}
-KPIs Sintéticos: TMR=${sinteticos.tmrMedioFormatado}, Sem Resposta=${sinteticos.semRespostaPct}%, Fechamento=${sinteticos.taxaFechamentoPct ?? "N/A"}%
-Amostra de Casos Analisados:
-${JSON.stringify(sampleInsights, null, 2)}`;
+        const available = (Object.keys(CRITERION_LABEL) as Criterion[]).filter((c) => qualidade.contagens[c]);
+        const input = buildStage2Input(
+          scope.name,
+          qualidade,
+          {
+            tmr: sinteticos.tmrMedioFormatado,
+            sem_resposta_pct: sinteticos.semRespostaPct,
+            fechamento_pct: sinteticos.taxaFechamentoPct,
+          },
+          pickCases(rows, available)
+        );
 
         const comp = await openai.chat.completions.create({
           model,
+          temperature: 0.3,
           messages: [
-            { role: "system", content: stage2System },
-            { role: "user", content: stage2User },
+            { role: "system", content: STAGE2_SYSTEM_PROMPT },
+            { role: "user", content: JSON.stringify(input) },
           ],
-          response_format: {
-            type: "json_schema",
-            json_schema: stage2JsonSchema as any,
-          },
+          response_format: { type: "json_schema", json_schema: stage2JsonSchema as any },
         });
 
-        const rawJson = comp.choices[0]?.message?.content;
-        if (rawJson) {
-          const parsed = Stage2OutputSchema.parse(JSON.parse(rawJson));
-          textoFortes = parsed.pontos_fortes;
-          textoOps = parsed.oportunidades;
-        }
+        const choice = comp.choices[0];
+        if (choice?.message?.refusal) throw new Error(`recusa do modelo: ${choice.message.refusal}`);
+        if (choice?.finish_reason === "length") throw new Error("resposta cortada (limite de tokens)");
+        if (!choice?.message?.content) throw new Error("resposta vazia");
+
+        const raw = Stage2OutputSchema.parse(JSON.parse(choice.message.content)) as RawStage2Output;
+        const fin = finalizeStage2(raw, qualidade);
+        textoFortes = fin.fortes;
+        textoOps = fin.oportunidades;
+        limitations.push(...fin.descartes);
       } catch (err: any) {
-        console.warn(`[Job E] Aviso ao gerar síntese com IA para ${scope.name}: ${err.message}`);
+        console.warn(`[Job E] Síntese com IA falhou para ${scope.name}: ${err.message}`);
+        limitations.push(`Síntese de IA indisponível: ${err.message}`);
       }
     }
 
+    // E. Limitações declaradas (nunca escondidas)
+    if (preliminar) {
+      limitations.push(`Amostra preliminar: ${qualidade.nComNota} conversas com nota (mínimo 10).`);
+    }
+    if (nSkipped || nError || nPending) {
+      const parts = [
+        nSkipped ? `${nSkipped} puladas (sem fala humana)` : "",
+        nError ? `${nError} com erro de análise` : "",
+        nPending ? `${nPending} ainda sem análise` : "",
+      ].filter(Boolean);
+      limitations.push(`Conversas fora da nota: ${parts.join(", ")}.`);
+    }
+    if (!scope.panelIds && nSemEsteira > 0) {
+      limitations.push(`${nSemEsteira} de ${sessions.length} conversas sem card (sem esteira).`);
+    }
+    for (const c of qualidade.criteriosIndisponiveis) {
+      const cover = rows.length ? rows.filter((r) => r.scores[c] != null).length / rows.length : 0;
+      limitations.push(`Critério "${CRITERION_LABEL[c]}" fora da nota: aplicável em ${fmtPct(cover)} das conversas.`);
+    }
+    if (nDuplicateCards > 0) limitations.push(`${nDuplicateCards} sessões com mais de um card; usado o mais recente.`);
+    if (sinteticos.tmrFallbackCount) {
+      limitations.push(`TMR de ${sinteticos.tmrFallbackCount} conversas veio do campo da sessão (sem mensagens no espelho).`);
+    }
+    if (funil) limitations.push("Funil usa o status atual dos cards, não o status no fim da janela.");
+
     // F. Persistir (imutável): só cria; correção é explícita e deixa revisão
-    const limitacoesList = [...(preliminar ? ["Amostra preliminar com menos de 10 conversas analisadas."] : []), ...gateLimitations];
     const data = {
       sinteticos: sinteticos as any,
       qualidade: qualidade as any,
@@ -381,7 +349,7 @@ ${JSON.stringify(sampleInsights, null, 2)}`;
       textoFortes: textoFortes as any,
       textoOps: textoOps as any,
       preliminar,
-      limitacoes: limitacoesList.length ? limitacoesList.join("\n") : null,
+      limitacoes: limitations.length ? limitations.join("\n") : null,
       promptVersionSintese: promptVersion,
       model,
     };
@@ -409,7 +377,7 @@ ${JSON.stringify(sampleInsights, null, 2)}`;
     }
 
     if (existing && options.correct) {
-      const { id, revisions: _r, ...snapshot } = existing as any;
+      const { id: _id, ...snapshot } = existing as any;
       await prisma.$transaction([
         prisma.periodReportRevision.create({
           data: { reportId: existing.id, snapshot: JSON.parse(JSON.stringify(snapshot)), reason: options.reason!.trim() },
@@ -434,7 +402,9 @@ ${JSON.stringify(sampleInsights, null, 2)}`;
       result.published++;
     }
 
-    console.log(`[Job E] Relatório para ${scope.name} salvo com sucesso. (Nota Geral: ${qualidade.notaGeral}, n=${n})`);
+    console.log(
+      `[Job E] Relatório para ${scope.name} salvo. (Nota: ${qualidade.notaGeral ?? "—"}, n=${qualidade.n}, com nota=${qualidade.nComNota})`
+    );
   }
 
   console.log(
