@@ -1,5 +1,6 @@
 import { prisma } from "@/db/prisma";
 import { anonymizeText } from "@/utils/anonymizer";
+import { isClientMessage } from "@/domain/message-kind";
 import type { SessionDetail } from "./types";
 
 export async function loadAuditedSessions(agentSlug?: string): Promise<SessionDetail[]> {
@@ -26,7 +27,7 @@ export async function loadAuditedSessions(agentSlug?: string): Promise<SessionDe
       timestamp: m.timestamp.toISOString().substring(11, 16),
       direction: m.direction as "TO_HUB" | "FROM_HUB",
       origin: m.origin,
-      sender: (m.direction === "TO_HUB" ? "cliente" : "operacao") as "cliente" | "operacao",
+      sender: (isClientMessage(m) ? "cliente" : "operacao") as "cliente" | "operacao",
       text: anonymizeText(m.text || m.transcription || "", ctx) || "[Mídia sem texto]",
     }));
 

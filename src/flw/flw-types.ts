@@ -89,6 +89,7 @@ export interface FlwMessageDTO {
   id: string;
   sessionId: string;
   type: string; // TEXT, AUDIO, IMAGE, NOTE, TRACK, TRANSITION, etc.
+  /** Do ponto de vista do canal: FROM_HUB = chega do cliente; TO_HUB = a loja envia. */
   direction: "FROM_HUB" | "TO_HUB" | string;
   origin: "BOT" | "DEFAULT" | "API" | string;
   status?: string;

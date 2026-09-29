@@ -1,5 +1,6 @@
 import React from "react";
 import type { SessionDetail } from "@/lib/types";
+import { AUTOMATED_ORIGINS } from "@/domain/message-kind";
 import { X, Clock, User, Phone, Bot, CheckCircle, ShieldAlert } from "lucide-react";
 
 interface ConversationModalProps {
@@ -110,7 +111,7 @@ export const ConversationModal: React.FC<ConversationModalProps> = ({ session, o
             <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100 flex-1 overflow-y-auto max-h-[460px]">
               {session.messages.map((m) => {
                 const isClient = m.sender === "cliente";
-                const isBot = m.origin === "BOT";
+                const isBot = AUTOMATED_ORIGINS.has(m.origin);
 
                 return (
                   <div
@@ -120,7 +121,7 @@ export const ConversationModal: React.FC<ConversationModalProps> = ({ session, o
                     <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mb-0.5 px-1">
                       {isBot ? (
                         <span className="flex items-center gap-1 font-semibold text-amber-600">
-                          <Bot className="w-3 h-3" /> [BOT AUTOMATIZADO]
+                          <Bot className="w-3 h-3" /> [AUTOMÁTICO · {m.origin}]
                         </span>
                       ) : isClient ? (
                         <span>Cliente</span>

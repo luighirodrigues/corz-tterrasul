@@ -81,7 +81,7 @@ Calculadas no Postgres a partir de sessão + mensagens + card. Podem usar conver
 
 | KPI (Pry) | Definição | Como calcular | Fonte FLW |
 |-----------|-----------|---------------|-----------|
-| **TMR médio** | Tempo médio até a primeira resposta humana | Da 1ª fala do cliente (`TO_HUB`) até a 1ª **resposta humana** (definição abaixo). `firstResponseAt − startAt` só quando a thread não está no espelho (declarado em `limitacoes`) | `GET /v2/session` + mensagens |
+| **TMR médio** | Tempo médio até a primeira resposta humana | Da 1ª fala do cliente (`FROM_HUB`) até a 1ª **resposta humana** (definição abaixo). `firstResponseAt − startAt` só quando a thread não está no espelho (declarado em `limitacoes`) | `GET /v2/session` + mensagens |
 | **FTR mediana** | Mediana do tempo até fechar o atendimento | Mediana de `endAt − startAt` (ou `timeService`) em `COMPLETED` | `GET /v2/session` |
 | **Resp. cliente** | Complemento de sem resposta | `1 − % sem resposta` | derivado |
 | **Sem resposta** | % de conversas/clientes em que o cliente falou e não houve resposta humana | O cliente escreveu e (a) nunca houve resposta humana depois da 1ª fala dele, ou (b) a sessão **não** está `COMPLETED` e a última fala do cliente é posterior à última fala humana. Uma `COMPLETED` que termina com “ok, obrigado” do cliente **não** conta | sessão |
@@ -92,7 +92,9 @@ Calculadas no Postgres a partir de sessão + mensagens + card. Podem usar conver
 
 Outbound iniciado pela loja: não confiar só em `timeWait` (regra Tterrasul). Usar a thread. Atendimento iniciado pela loja (sem fala do cliente) não tem TMR nem entra em “sem resposta”.
 
-**Mensagem humana (decisão travada).** É a mensagem `FROM_HUB` com `origin = DEFAULT`, de tipo de conversa (não `NOTE`, `TRANSITION` nem `TRACK`) e status não falho (`FAILED`/`DELETED`). As demais origens da FLW (`BOT`, `OFFICE_HOURS`, `CAMPAIGN`, `PAYMENT`, `GATEWAY`, `API`) são **automáticas** e nunca contam como resposta nem como reativação. `API` é tratada como automática até confirmar que nenhum atendente envia por integração. Nota interna (`NOTE`) é anotação que o cliente não vê.
+**Direção (confirmado nos dados reais).** `direction` é do ponto de vista do canal WhatsApp (o “hub”): **`FROM_HUB` é o que chega do cliente** (origem `GATEWAY`) e **`TO_HUB` é o que a loja envia** (atendente, bot, campanha). Uma versão anterior deste PRD tinha isso invertido.
+
+**Mensagem humana (decisão travada).** É a mensagem `TO_HUB` com `origin = DEFAULT` (atendente pelo painel da FLW) ou `origin = GATEWAY` (atendente digitando direto no WhatsApp), de tipo de conversa (não `NOTE`, `TRANSITION` nem `TRACK`) e status não falho (`FAILED`/`DELETED`). As demais origens (`BOT`, `OFFICE_HOURS`, `CAMPAIGN`, `PAYMENT`, `API`) são **automáticas** e nunca contam como resposta nem como reativação. `API` é tratada como automática até confirmar que nenhum atendente envia por integração. Nota interna (`NOTE`) é anotação que o cliente não vê.
 
 **Sem dado, não há número.** Quando o recorte não tem base para calcular, o KPI é `null` (“N/D”), nunca `0%` ou `100%`.
 
@@ -305,7 +307,7 @@ Seleciona sessões onde:
 
 Para cada uma:
 
-1. Monta transcript compacto: `timestamp`, `direction` (`TO_HUB` cliente / `FROM_HUB` operação), `origin`, `userId`, `text` (áudio: `details.transcription.text` se houver). Ignora `TRANSITION` / `TRACK` no prompt; `NOTE` pode ir marcada como nota interna.
+1. Monta transcript compacto: `timestamp`, `direction` (`FROM_HUB` cliente / `TO_HUB` operação), `origin`, `userId`, `text` (áudio: `details.transcription.text` se houver). Ignora `TRANSITION` / `TRACK` no prompt; `NOTE` pode ir marcada como nota interna.
 2. Chama a OpenAI com Structured Outputs (schema abaixo).
 3. Persiste `session_analyses`. Em erro: `status = error`, retry com backoff; não marca `done`.
 

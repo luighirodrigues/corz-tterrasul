@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { computeSessionMetrics, median, type TimedMessage } from "../src/domain/session-metrics.js";
-import { isAutomatedMessage, isHumanOperatorMessage } from "../src/domain/message-kind.js";
+import { isAutomatedMessage, isClientMessage, isHumanOperatorMessage } from "../src/domain/message-kind.js";
 import { classifyLostReason, closingRate, tallyCards } from "../src/domain/lost-reasons.js";
 import { resolveSessionPanel } from "../src/domain/session-panel.js";
 
 const at = (hhmm: string, day = "2026-09-24") => new Date(`${day}T${hhmm}:00Z`);
 const m = (
-  direction: "TO_HUB" | "FROM_HUB",
+  direction: "FROM_HUB" | "TO_HUB",
   ts: Date,
   origin = "DEFAULT",
   type = "TEXT",
@@ -24,43 +24,57 @@ const session = (status = "COMPLETED", over: any = {}) => ({
 
 describe("message-kind", () => {
   it("só origin DEFAULT é humano; as demais origens são automáticas", () => {
-    for (const origin of ["BOT", "OFFICE_HOURS", "CAMPAIGN", "API", "GATEWAY", "PAYMENT"]) {
-      expect(isHumanOperatorMessage(m("FROM_HUB", at("10:00"), origin))).toBe(false);
-      expect(isAutomatedMessage(m("FROM_HUB", at("10:00"), origin))).toBe(true);
+    for (const origin of ["BOT", "OFFICE_HOURS", "CAMPAIGN", "API", "PAYMENT"]) {
+      expect(isHumanOperatorMessage(m("TO_HUB", at("10:00"), origin))).toBe(false);
+      expect(isAutomatedMessage(m("TO_HUB", at("10:00"), origin))).toBe(true);
     }
-    expect(isHumanOperatorMessage(m("FROM_HUB", at("10:00")))).toBe(true);
+    expect(isHumanOperatorMessage(m("TO_HUB", at("10:00")))).toBe(true);
+  });
+
+  it("direction é do ponto de vista do canal: FROM_HUB = cliente; TO_HUB = loja", () => {
+    expect(isClientMessage(m("FROM_HUB", at("10:00"), "GATEWAY"))).toBe(true);
+    expect(isClientMessage(m("TO_HUB", at("10:00")))).toBe(false);
+  });
+
+  it("atendente digitando direto no WhatsApp (TO_HUB + GATEWAY) é humano", () => {
+    expect(isHumanOperatorMessage(m("TO_HUB", at("10:00"), "GATEWAY"))).toBe(true);
+    expect(isAutomatedMessage(m("TO_HUB", at("10:00"), "GATEWAY"))).toBe(false);
+  });
+
+  it("mensagem do cliente (FROM_HUB) nunca é resposta humana", () => {
+    expect(isHumanOperatorMessage(m("FROM_HUB", at("10:00"), "GATEWAY"))).toBe(false);
   });
 
   it("nota interna e mensagem falha não são resposta humana", () => {
-    expect(isHumanOperatorMessage(m("FROM_HUB", at("10:00"), "DEFAULT", "NOTE"))).toBe(false);
-    expect(isHumanOperatorMessage(m("FROM_HUB", at("10:00"), "DEFAULT", "TEXT", "FAILED"))).toBe(false);
+    expect(isHumanOperatorMessage(m("TO_HUB", at("10:00"), "DEFAULT", "NOTE"))).toBe(false);
+    expect(isHumanOperatorMessage(m("TO_HUB", at("10:00"), "DEFAULT", "TEXT", "FAILED"))).toBe(false);
   });
 });
 
 describe("computeSessionMetrics - TMR", () => {
   it("resposta automática de fora do horário não conta como 1ª resposta humana", () => {
     const r = computeSessionMetrics(session(), [
-      m("TO_HUB", at("22:00")),
-      m("FROM_HUB", at("22:00"), "OFFICE_HOURS"),
-      m("FROM_HUB", at("08:00", "2026-09-25")),
+      m("FROM_HUB", at("22:00")),
+      m("TO_HUB", at("22:00"), "OFFICE_HOURS"),
+      m("TO_HUB", at("08:00", "2026-09-25")),
     ]);
     expect(r.tmrSeconds).toBe(10 * 3600);
   });
 
   it("bot antes do humano não conta", () => {
     const r = computeSessionMetrics(session(), [
-      m("TO_HUB", at("14:00")),
-      m("FROM_HUB", at("14:00"), "BOT"),
-      m("FROM_HUB", at("14:05")),
+      m("FROM_HUB", at("14:00")),
+      m("TO_HUB", at("14:00"), "BOT"),
+      m("TO_HUB", at("14:05")),
     ]);
     expect(r.tmrSeconds).toBe(300);
   });
 
   it("nota interna não é resposta ao cliente", () => {
     const r = computeSessionMetrics(session(), [
-      m("TO_HUB", at("14:00")),
-      m("FROM_HUB", at("14:01"), "DEFAULT", "NOTE"),
-      m("FROM_HUB", at("14:10")),
+      m("FROM_HUB", at("14:00")),
+      m("TO_HUB", at("14:01"), "DEFAULT", "NOTE"),
+      m("TO_HUB", at("14:10")),
     ]);
     expect(r.tmrSeconds).toBe(600);
   });
@@ -75,7 +89,7 @@ describe("computeSessionMetrics - TMR", () => {
   });
 
   it("atendimento iniciado pela loja não tem TMR nem sem-resposta", () => {
-    const r = computeSessionMetrics(session("IN_PROGRESS"), [m("FROM_HUB", at("14:00"))]);
+    const r = computeSessionMetrics(session("IN_PROGRESS"), [m("TO_HUB", at("14:00"))]);
     expect(r.tmrSeconds).toBeNull();
     expect(r.semResposta).toBe(false);
   });
@@ -83,31 +97,31 @@ describe("computeSessionMetrics - TMR", () => {
 
 describe("computeSessionMetrics - sem resposta (D2)", () => {
   it("cliente nunca respondido: conta", () => {
-    expect(computeSessionMetrics(session("IN_PROGRESS"), [m("TO_HUB", at("14:00"))]).semResposta).toBe(true);
+    expect(computeSessionMetrics(session("IN_PROGRESS"), [m("FROM_HUB", at("14:00"))]).semResposta).toBe(true);
   });
 
   it("'ok, obrigado' no fim de uma COMPLETED não conta", () => {
     const r = computeSessionMetrics(session("COMPLETED"), [
-      m("TO_HUB", at("14:00")),
-      m("FROM_HUB", at("14:02")),
-      m("TO_HUB", at("14:30")),
+      m("FROM_HUB", at("14:00")),
+      m("TO_HUB", at("14:02")),
+      m("FROM_HUB", at("14:30")),
     ]);
     expect(r.semResposta).toBe(false);
   });
 
   it("sessão aberta com o cliente por último: conta", () => {
     const r = computeSessionMetrics(session("IN_PROGRESS"), [
-      m("TO_HUB", at("14:00")),
-      m("FROM_HUB", at("14:02")),
-      m("TO_HUB", at("14:30")),
+      m("FROM_HUB", at("14:00")),
+      m("TO_HUB", at("14:02")),
+      m("FROM_HUB", at("14:30")),
     ]);
     expect(r.semResposta).toBe(true);
   });
 
   it("só bot respondeu: conta como sem resposta humana", () => {
     const r = computeSessionMetrics(session("COMPLETED"), [
-      m("TO_HUB", at("14:00")),
-      m("FROM_HUB", at("14:00"), "BOT"),
+      m("FROM_HUB", at("14:00")),
+      m("TO_HUB", at("14:00"), "BOT"),
     ]);
     expect(r.semResposta).toBe(true);
   });
@@ -116,9 +130,9 @@ describe("computeSessionMetrics - sem resposta (D2)", () => {
 describe("computeSessionMetrics - reativação e FTR", () => {
   it("gap de 24h seguido de fala humana é reativação", () => {
     const r = computeSessionMetrics(session(), [
-      m("TO_HUB", at("14:00")),
-      m("FROM_HUB", at("14:05")),
-      m("FROM_HUB", at("15:00", "2026-09-26")),
+      m("FROM_HUB", at("14:00")),
+      m("TO_HUB", at("14:05")),
+      m("TO_HUB", at("15:00", "2026-09-26")),
     ]);
     expect(r.reativada).toBe(true);
   });
@@ -126,16 +140,16 @@ describe("computeSessionMetrics - reativação e FTR", () => {
   it("gap de 24h seguido de campanha/bot NÃO é reativação", () => {
     for (const origin of ["CAMPAIGN", "BOT"]) {
       const r = computeSessionMetrics(session(), [
-        m("TO_HUB", at("14:00")),
-        m("FROM_HUB", at("14:05")),
-        m("FROM_HUB", at("15:00", "2026-09-26"), origin),
+        m("FROM_HUB", at("14:00")),
+        m("TO_HUB", at("14:05")),
+        m("TO_HUB", at("15:00", "2026-09-26"), origin),
       ]);
       expect(r.reativada).toBe(false);
     }
   });
 
   it("gap de 24h seguido de fala do cliente não é reativação da loja", () => {
-    const r = computeSessionMetrics(session(), [m("FROM_HUB", at("14:00")), m("TO_HUB", at("15:00", "2026-09-26"))]);
+    const r = computeSessionMetrics(session(), [m("TO_HUB", at("14:00")), m("FROM_HUB", at("15:00", "2026-09-26"))]);
     expect(r.reativada).toBe(false);
   });
 

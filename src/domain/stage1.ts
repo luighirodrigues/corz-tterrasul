@@ -75,7 +75,7 @@ Dê nota inteira de 0 a 10 em cinco critérios. 10 é excelente.
 Como ler a transcrição:
 - Cada linha é um JSON com n, t (data e hora local), dir, origin, atendente e text.
 - dir = "cliente": fala do cliente. dir = "operacao": mensagem enviada pela loja. dir = "nota_interna": anotação interna que o cliente NÃO viu; use só como contexto, nunca como fala ao cliente.
-- Só é fala do atendente humano a mensagem com dir = "operacao" e origin = "DEFAULT". Mensagens com origin BOT, OFFICE_HOURS, CAMPAIGN, API, GATEWAY ou PAYMENT são automáticas: não dê crédito nem culpa ao atendente por elas.
+- Só é fala do atendente humano a mensagem com dir = "operacao" e origin = "DEFAULT" ou "GATEWAY" (atendente digitando direto no WhatsApp). Mensagens com origin BOT, OFFICE_HOURS, CAMPAIGN, API ou PAYMENT são automáticas: não dê crédito nem culpa ao atendente por elas.
 - Marcadores entre colchetes ([áudio sem transcrição], [imagem], [... N mensagens omitidas do meio ...]) indicam conteúdo que você não vê. Não suponha o que havia nele. Se isso impedir avaliar um critério, marque aplica=false.
 
 Regras:

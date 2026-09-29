@@ -6,7 +6,7 @@ import { costUsd, nextRetryDelayMinutes } from "../src/domain/cost.js";
 const TZ = "America/Sao_Paulo";
 const msg = (over: Partial<TranscriptMessage> & { ts: string }): TranscriptMessage => ({
   timestamp: new Date(over.ts),
-  direction: "TO_HUB",
+  direction: "FROM_HUB",
   origin: "DEFAULT",
   type: "TEXT",
   status: "SENT",
@@ -21,10 +21,10 @@ describe("buildTranscript", () => {
     const { lines } = buildTranscript(
       [
         msg({ ts: "2026-09-24T17:15:00Z", text: "Boa tarde" }),
-        msg({ ts: "2026-09-24T17:15:30Z", direction: "FROM_HUB", origin: "BOT", text: "Transferindo" }),
-        msg({ ts: "2026-09-24T17:16:00Z", direction: "FROM_HUB", origin: "OFFICE_HOURS", text: "Fora do horário" }),
-        msg({ ts: "2026-09-24T17:17:00Z", direction: "FROM_HUB", text: "Temos sim", senderId: "u1" }),
-        msg({ ts: "2026-09-24T17:20:00Z", direction: "FROM_HUB", type: "NOTE", text: "cliente já tem Polo", senderId: "u1" }),
+        msg({ ts: "2026-09-24T17:15:30Z", direction: "TO_HUB", origin: "BOT", text: "Transferindo" }),
+        msg({ ts: "2026-09-24T17:16:00Z", direction: "TO_HUB", origin: "OFFICE_HOURS", text: "Fora do horário" }),
+        msg({ ts: "2026-09-24T17:17:00Z", direction: "TO_HUB", text: "Temos sim", senderId: "u1" }),
+        msg({ ts: "2026-09-24T17:20:00Z", direction: "TO_HUB", type: "NOTE", text: "cliente já tem Polo", senderId: "u1" }),
       ],
       { tz: TZ, agentNames: new Map([["u1", "Vinicios"]]) }
     );
@@ -68,7 +68,7 @@ describe("buildTranscript", () => {
       [
         msg({ ts: "2026-09-24T10:00:00Z", type: "TRANSITION" }),
         msg({ ts: "2026-09-24T10:01:00Z", type: "TRACK" }),
-        msg({ ts: "2026-09-24T10:02:00Z", direction: "FROM_HUB", status: "FAILED" }),
+        msg({ ts: "2026-09-24T10:02:00Z", direction: "TO_HUB", status: "FAILED" }),
         msg({ ts: "2026-09-24T10:03:00Z", text: "ok" }),
       ],
       { tz: TZ }
@@ -79,9 +79,9 @@ describe("buildTranscript", () => {
   it("conta atendentes humanos distintos (transferência)", () => {
     const { stats } = buildTranscript(
       [
-        msg({ ts: "2026-09-24T10:00:00Z", direction: "FROM_HUB", senderId: "a" }),
-        msg({ ts: "2026-09-24T10:01:00Z", direction: "FROM_HUB", senderId: "b" }),
-        msg({ ts: "2026-09-24T10:02:00Z", direction: "FROM_HUB", origin: "BOT", senderId: "bot" }),
+        msg({ ts: "2026-09-24T10:00:00Z", direction: "TO_HUB", senderId: "a" }),
+        msg({ ts: "2026-09-24T10:01:00Z", direction: "TO_HUB", senderId: "b" }),
+        msg({ ts: "2026-09-24T10:02:00Z", direction: "TO_HUB", origin: "BOT", senderId: "bot" }),
       ],
       { tz: TZ }
     );
