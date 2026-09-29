@@ -220,6 +220,15 @@ model SessionAnalysis {
   entidades         Json?     // Ex: { interesse: "BMW X1" }
   analyzedAt        DateTime? @map("analyzed_at")
   errorText         String?   @map("error_text")
+  attempts            Int       @default(0)
+  nextRetryAt         DateTime? @map("next_retry_at")
+  transcriptTruncated Boolean   @default(false) @map("transcript_truncated")
+  messagesOmitted     Int?      @map("messages_omitted")
+  audioSemTranscricao Int       @default(0) @map("audio_sem_transcricao")
+  atendentesHumanos   Int?      @map("atendentes_humanos")
+  inputTokens         Int?      @map("input_tokens")
+  outputTokens        Int?      @map("output_tokens")
+  costUsd             Float?    @map("cost_usd")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 

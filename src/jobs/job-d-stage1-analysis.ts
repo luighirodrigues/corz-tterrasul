@@ -1,132 +1,38 @@
 import OpenAI from "openai";
-import { z } from "zod";
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
-import { anonymizeText, truncateEvidence } from "../utils/anonymizer.js";
+import { ensureTenant } from "../domain/tenant.js";
+import { isHumanOperatorMessage } from "../domain/message-kind.js";
+import { buildTranscript } from "../domain/transcript.js";
+import { resolveSessionPanel } from "../domain/session-panel.js";
+import { costUsd, nextRetryDelayMinutes, pricesConfigured } from "../domain/cost.js";
+import {
+  calculateNotaConversa,
+  cutText,
+  normalizeStage1,
+  Stage1OutputSchema,
+  STAGE1_PROMPT_VERSION,
+  STAGE1_SYSTEM_PROMPT,
+  stage1JsonSchema,
+} from "../domain/stage1.js";
+import { truncateEvidence } from "../utils/anonymizer.js";
 
-export const STAGE1_PROMPT_VERSION = "stage1-v1";
+// Reexporta para manter compatibilidade com quem importa daqui.
+export { calculateNotaConversa, STAGE1_PROMPT_VERSION };
+export type { Stage1Output } from "../domain/stage1.js";
 
-// Schema Zod para validação da resposta estruturada
-export const CriterionScoreSchema = z.object({
-  nota: z.number().min(0).max(10).nullable(),
-  aplica: z.boolean(),
-  evidencia: z.string().max(300).optional(),
-});
-
-export const Stage1OutputSchema = z.object({
-  atrito: CriterionScoreSchema,
-  solucao: CriterionScoreSchema,
-  necessidade: CriterionScoreSchema,
-  proximo_passo: CriterionScoreSchema,
-  resolvida: CriterionScoreSchema,
-  resumo: z.string().max(250),
-  entidades: z.record(z.any()).optional(),
-});
-
-export type Stage1Output = z.infer<typeof Stage1OutputSchema>;
-
-// JSON Schema formal para OpenAI Structured Outputs
-const stage1JsonSchema = {
-  name: "stage1_conversation_quality",
-  strict: true,
-  schema: {
-    type: "object",
-    properties: {
-      atrito: {
-        type: "object",
-        properties: {
-          nota: { type: ["number", "null"] },
-          aplica: { type: "boolean" },
-          evidencia: { type: "string" },
-        },
-        required: ["nota", "aplica", "evidencia"],
-        additionalProperties: false,
-      },
-      solucao: {
-        type: "object",
-        properties: {
-          nota: { type: ["number", "null"] },
-          aplica: { type: "boolean" },
-          evidencia: { type: "string" },
-        },
-        required: ["nota", "aplica", "evidencia"],
-        additionalProperties: false,
-      },
-      necessidade: {
-        type: "object",
-        properties: {
-          nota: { type: ["number", "null"] },
-          aplica: { type: "boolean" },
-          evidencia: { type: "string" },
-        },
-        required: ["nota", "aplica", "evidencia"],
-        additionalProperties: false,
-      },
-      proximo_passo: {
-        type: "object",
-        properties: {
-          nota: { type: ["number", "null"] },
-          aplica: { type: "boolean" },
-          evidencia: { type: "string" },
-        },
-        required: ["nota", "aplica", "evidencia"],
-        additionalProperties: false,
-      },
-      resolvida: {
-        type: "object",
-        properties: {
-          nota: { type: ["number", "null"] },
-          aplica: { type: "boolean" },
-          evidencia: { type: "string" },
-        },
-        required: ["nota", "aplica", "evidencia"],
-        additionalProperties: false,
-      },
-      resumo: {
-        type: "string",
-      },
-      entidades: {
-        type: "object",
-        properties: {
-          interesse: { type: ["string", "null"] },
-          modelo_veiculo: { type: ["string", "null"] },
-          tipo_servico_peca: { type: ["string", "null"] },
-        },
-        required: ["interesse", "modelo_veiculo", "tipo_servico_peca"],
-        additionalProperties: false,
-      },
-    },
-    required: ["atrito", "solucao", "necessidade", "proximo_passo", "resolvida", "resumo", "entidades"],
-    additionalProperties: false,
-  },
-};
-
-export function calculateNotaConversa(result: Stage1Output): number | null {
-  const criteria = [
-    result.atrito,
-    result.solucao,
-    result.necessidade,
-    result.proximo_passo,
-    result.resolvida,
-  ];
-
-  const validScores: number[] = [];
-  for (const c of criteria) {
-    if (c.aplica && c.nota !== null && !isNaN(c.nota)) {
-      validScores.push(c.nota);
-    }
-  }
-
-  if (validScores.length === 0) return null;
-  const avg = validScores.reduce((a, b) => a + b, 0) / validScores.length;
-  return Number(avg.toFixed(2));
-}
+const BATCH_SIZE = 25;
 
 export interface Stage1Options {
   tenantId?: string;
   limit?: number;
   promptVersion?: string;
+  /** Reanalisa mesmo sessões já `done`/`skipped` na versão (job manual). */
   forceReanalyze?: boolean;
+  /** Analisa só esta sessão (id externo da FLW). */
+  sessionExternalId?: string;
+  /** Só sessões encerradas a partir desta data (padrão: GO_LIVE_AT). */
+  since?: string;
 }
 
 export async function runJobDStage1Analysis(options: Stage1Options = {}): Promise<void> {
@@ -138,219 +44,226 @@ export async function runJobDStage1Analysis(options: Stage1Options = {}): Promis
     throw new Error("OPENAI_API_KEY não configurada no .env.");
   }
 
-  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: env.OPENAI_TIMEOUT_STAGE1_MS, maxRetries: 3 });
+  const tenant = await ensureTenant(tenantId);
+
+  const prices = { inputPer1M: env.OPENAI_PRICE_STAGE1_INPUT_PER_1M, outputPer1M: env.OPENAI_PRICE_STAGE1_OUTPUT_PER_1M };
+  const capEnabled = pricesConfigured(prices) && env.OPENAI_MAX_USD_PER_RUN > 0;
+  if (!capEnabled) {
+    console.warn("[Job D] Preços da OpenAI não configurados: o teto OPENAI_MAX_USD_PER_RUN não será aplicado.");
+  }
+
+  const agents = await prisma.agent.findMany({ where: { tenantId }, select: { externalId: true, name: true } });
+  const agentNames = new Map(agents.map((a) => [a.externalId, a.name]));
+  const panelNames = new Map<string, string>(
+    [
+      [tenant.panelVendasId, "Vendas"],
+      [tenant.panelCampanhasId, "Campanhas"],
+      [tenant.panelPecasId, "Peças"],
+      [tenant.panelOficinaId, "Oficina"],
+    ].filter((p): p is [string, string] => !!p[0])
+  );
+  const tenantPanelIds = [...panelNames.keys()];
+
+  const sinceRaw = options.since ?? tenant.goLiveAt?.toISOString();
+  const since = sinceRaw ? new Date(sinceRaw) : null;
+  const now = new Date();
+
+  // Fila (PRD §9.2): COMPLETED sem análise `done`/`skipped` nesta versão. Erro volta com backoff e limite de tentativas.
+  const where: any = {
+    tenantId,
+    status: "COMPLETED",
+    ...(options.sessionExternalId ? { externalId: options.sessionExternalId } : {}),
+    ...(since && !options.sessionExternalId ? { endAt: { gte: since } } : {}),
+    ...(options.forceReanalyze || options.sessionExternalId
+      ? {}
+      : {
+          analyses: {
+            none: {
+              promptVersion,
+              OR: [
+                { status: { in: ["done", "skipped"] } },
+                { status: "error", attempts: { gte: env.STAGE1_MAX_ATTEMPTS } },
+                { status: "error", nextRetryAt: { gt: now } },
+              ],
+            },
+          },
+        }),
+  };
 
   console.log(`[Job D] Buscando sessões COMPLETED pendentes de análise para o tenant: ${tenantId}...`);
 
-  // Buscar sessões COMPLETED
-  const sessions = await prisma.session.findMany({
-    where: {
-      tenantId,
-      status: "COMPLETED",
-      ...(options.forceReanalyze
-        ? {}
-        : {
-            analyses: {
-              none: {
-                promptVersion,
-                status: "done",
-              },
-            },
-          }),
-    },
-    include: {
-      messages: {
-        orderBy: { timestamp: "asc" },
+  let processed = 0;
+  let done = 0;
+  let skipped = 0;
+  let failed = 0;
+  let spent = 0;
+  let capped = false;
+  let cursor: string | undefined;
+
+  outer: while (true) {
+    const batch = await prisma.session.findMany({
+      where,
+      orderBy: [{ endAt: "desc" }, { id: "asc" }],
+      take: BATCH_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: {
+        messages: { orderBy: { timestamp: "asc" } },
+        panelCards: { select: { panelId: true, panelTitle: true, stepTitle: true, status: true, flwUpdatedAt: true } },
       },
-      panelCards: true,
-    },
-    take: options.limit,
-  });
-
-  console.log(`[Job D] ${sessions.length} sessões encontradas para análise.`);
-
-  for (const session of sessions) {
-    console.log(`[Job D] Analisando sessão ${session.externalId} (${session.agentName || "sem atendente"})...`);
-
-    // Filtrar mensagens válidas (ignorar TRACK e TRANSITION)
-    const validMsgs = session.messages.filter(
-      (m) => m.type !== "TRACK" && m.type !== "TRANSITION" && (m.text || m.transcription)
-    );
-
-    // Verificar se há mensagens humanas da operação
-    const hasHumanOp = validMsgs.some((m) => m.direction === "FROM_HUB" && m.origin !== "BOT");
-    if (!hasHumanOp) {
-      console.log(`[Job D] Sessão ${session.externalId} pulada: sem mensagens humanas da operação.`);
-      await prisma.sessionAnalysis.upsert({
-        where: {
-          tenantId_sessionExternalId_promptVersion: {
-            tenantId,
-            sessionExternalId: session.externalId,
-            promptVersion,
-          },
-        },
-        update: {
-          status: "skipped",
-          skippedReason: "sem mensagens humanas da operação",
-          sessionId: session.id,
-          model,
-        },
-        create: {
-          tenantId,
-          sessionExternalId: session.externalId,
-          sessionId: session.id,
-          promptVersion,
-          model,
-          status: "skipped",
-          skippedReason: "sem mensagens humanas da operação",
-        },
-      });
-      continue;
-    }
-
-    // Montar transcript compacto e anonimizado
-    const anonCtx = {
-      clientNames: [session.contactName, session.contactNameWhatsapp],
-      clientPhone: session.contactPhone,
-    };
-    const transcriptLines = validMsgs.map((m, idx) => {
-      const dirLabel = m.direction === "TO_HUB" ? "cliente" : "operacao";
-      const originLabel = m.origin === "BOT" ? " [BOT]" : "";
-      const rawContent = m.text || m.transcription || "";
-      const safeContent = anonymizeText(rawContent, anonCtx);
-      const timeStr = new Date(m.timestamp).toISOString().substring(11, 19);
-      return `${idx + 1}. [${timeStr}] ${dirLabel}${originLabel}: ${safeContent}`;
     });
+    if (batch.length === 0) break;
+    cursor = batch[batch.length - 1].id;
 
-    const transcriptPayload = transcriptLines.join("\n");
+    for (const session of batch) {
+      if (options.limit !== undefined && processed >= options.limit) break outer;
+      if (capped) break outer;
+      processed++;
 
-    const systemPrompt = `Você avalia a qualidade de um atendimento via WhatsApp já encerrado.
-Dê uma nota de 0 a 10 em cinco critérios objetivos. 10 é excelente.
-- atrito: Houve dificuldade de entendimento ou atrito? ATENÇÃO À POLARIDADE: 10 significa pouco ou nenhum atrito (conversa fluida e agradável). 0 significa extremo atrito.
-- solucao: O atendente ofereceu solução clara para o pedido do cliente?
-- necessidade: O atendente compreendeu o que o cliente realmente queria?
-- proximo_passo: Ficou explícito e combinado o que fazer depois (agendamento, retorno, envio de cotação)?
-- resolvida: Houve conclusão no diálogo (agendamento firmado, test drive marcado, retorno combinado, pedido de peça definido)? Não confunda com venda fechada no CRM.
-
-Regras Estritas:
-1. Mensagens com origin [BOT] representam automação/robô, NÃO o atendente humano. Não avalie o atendente por falas do robô.
-2. Não invente falas.
-3. Se um critério não se aplicar à natureza do diálogo, marque aplica=false e nota=null.
-4. evidencia: trecho curto de até 200 caracteres justificando a nota, rigorosamente sem nomes de clientes, telefones ou emails.`;
-
-    const userPrompt = `Metadados:
-- Sessão ID: ${session.externalId}
-- Atendente: ${session.agentName || "Não identificado"}
-- Departamento: ${session.departmentName || "Geral"}
-- Painel CRM: ${session.panelCards[0]?.stepTitle || "Sem card"}
-- Início: ${session.startAt?.toISOString() || "N/D"} | Fim: ${session.endAt?.toISOString() || "N/D"}
-
-Transcrição do Atendimento:
-${transcriptPayload}`;
-
-    try {
-      const completion = await openai.chat.completions.create({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: stage1JsonSchema as any,
-        },
-      });
-
-      const rawJson = completion.choices[0]?.message?.content;
-      if (!rawJson) {
-        throw new Error("OpenAI retornou resposta vazia.");
-      }
-
-      const parsedData = Stage1OutputSchema.parse(JSON.parse(rawJson));
-
-      // Higienizar evidências
-      const safeEvidencias = {
-        atrito: truncateEvidence(parsedData.atrito.evidencia || "", 200, anonCtx),
-        solucao: truncateEvidence(parsedData.solucao.evidencia || "", 200, anonCtx),
-        necessidade: truncateEvidence(parsedData.necessidade.evidencia || "", 200, anonCtx),
-        proximo_passo: truncateEvidence(parsedData.proximo_passo.evidencia || "", 200, anonCtx),
-        resolvida: truncateEvidence(parsedData.resolvida.evidencia || "", 200, anonCtx),
+      const key = {
+        tenantId_sessionExternalId_promptVersion: { tenantId, sessionExternalId: session.externalId, promptVersion },
+      };
+      const prev = await prisma.sessionAnalysis.findUnique({ where: key, select: { attempts: true } });
+      const skip = async (reason: string) => {
+        console.log(`[Job D] Sessão ${session.externalId} pulada: ${reason}.`);
+        const data = { status: "skipped", skippedReason: reason, model, errorText: null };
+        await prisma.sessionAnalysis.upsert({
+          where: key,
+          update: data,
+          create: { tenantId, sessionExternalId: session.externalId, sessionId: session.id, promptVersion, ...data },
+        });
+        skipped++;
       };
 
-      const notaConversa = calculateNotaConversa(parsedData);
-      const safeResumo = truncateEvidence(parsedData.resumo, 200, anonCtx);
+      if (session.sessionType === "GROUP") {
+        await skip("conversa de grupo");
+        continue;
+      }
+      if (!session.messages.some(isHumanOperatorMessage)) {
+        await skip("sem mensagens humanas da operação");
+        continue;
+      }
 
-      await prisma.sessionAnalysis.upsert({
-        where: {
-          tenantId_sessionExternalId_promptVersion: {
-            tenantId,
-            sessionExternalId: session.externalId,
-            promptVersion,
-          },
-        },
-        update: {
+      const { lines, stats } = buildTranscript(session.messages, {
+        tz: tenant.timezone,
+        agentNames,
+        anonymize: { clientNames: [session.contactName, session.contactNameWhatsapp], clientPhone: session.contactPhone },
+        maxTokens: env.STAGE1_MAX_TRANSCRIPT_TOKENS,
+      });
+      if (lines.filter((l) => l.n != null).length === 0) {
+        await skip("sem conteúdo de conversa");
+        continue;
+      }
+
+      if (capEnabled && spent >= env.OPENAI_MAX_USD_PER_RUN) {
+        capped = true;
+        console.warn(`[Job D] Teto de US$ ${env.OPENAI_MAX_USD_PER_RUN} atingido; as sessões restantes ficam pendentes.`);
+        break outer;
+      }
+
+      const panel = resolveSessionPanel(session.panelCards, tenantPanelIds);
+      const panelLine = panel.panelId
+        ? `Painel: ${panel.panelTitle ?? panelNames.get(panel.panelId) ?? "?"} | Etapa: ${panel.stepTitle ?? "N/D"}`
+        : "Painel: sem esteira";
+      const fmt = (d: Date | null) => (d ? d.toISOString() : "N/D");
+      const userPrompt = `Metadados:
+- Atendente responsável: ${session.agentName || "Não identificado"}
+- Equipe: ${session.departmentName || "Geral"}
+- ${panelLine}
+- Início: ${fmt(session.startAt)} | Fim: ${fmt(session.endAt)}${stats.atendentesHumanos > 1 ? `\n- Atenção: ${stats.atendentesHumanos} atendentes humanos participaram (transferência).` : ""}
+
+Transcrição (uma mensagem por linha, JSON):
+${lines.map((l) => JSON.stringify(l)).join("\n")}`;
+
+      const extra = {
+        transcriptTruncated: stats.truncated,
+        messagesOmitted: stats.truncated ? stats.messagesOmitted : null,
+        audioSemTranscricao: stats.audioSemTranscricao,
+        atendentesHumanos: stats.atendentesHumanos,
+      };
+
+      try {
+        const completion = await openai.chat.completions.create({
+          model,
+          temperature: 0,
+          messages: [
+            { role: "system", content: STAGE1_SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_schema", json_schema: stage1JsonSchema as any },
+        });
+
+        const cost = costUsd(completion.usage, prices);
+        spent += cost;
+
+        const choice = completion.choices[0];
+        if (choice?.message?.refusal) throw new Error(`recusa do modelo: ${choice.message.refusal}`);
+        if (choice?.finish_reason === "length") throw new Error("resposta cortada (limite de tokens)");
+        const rawJson = choice?.message?.content;
+        if (!rawJson) throw new Error("OpenAI retornou resposta vazia.");
+
+        const { output: parsed, warnings } = normalizeStage1(Stage1OutputSchema.parse(JSON.parse(rawJson)));
+        if (warnings.length) console.warn(`[Job D] Sessão ${session.externalId}: ${warnings.join("; ")}`);
+
+        const anon = { clientNames: [session.contactName, session.contactNameWhatsapp], clientPhone: session.contactPhone };
+        const ev = (t?: string) => truncateEvidence(t || "", 200, anon);
+        const notaConversa = calculateNotaConversa(parsed);
+        const data = {
           status: "done",
           model,
-          scoreAtrito: parsedData.atrito.aplica ? parsedData.atrito.nota : null,
-          scoreSolucao: parsedData.solucao.aplica ? parsedData.solucao.nota : null,
-          scoreNecessidade: parsedData.necessidade.aplica ? parsedData.necessidade.nota : null,
-          scoreProximoPasso: parsedData.proximo_passo.aplica ? parsedData.proximo_passo.nota : null,
-          scoreResolvida: parsedData.resolvida.aplica ? parsedData.resolvida.nota : null,
+          skippedReason: null,
+          scoreAtrito: parsed.atrito.aplica ? parsed.atrito.nota : null,
+          scoreSolucao: parsed.solucao.aplica ? parsed.solucao.nota : null,
+          scoreNecessidade: parsed.necessidade.aplica ? parsed.necessidade.nota : null,
+          scoreProximoPasso: parsed.proximo_passo.aplica ? parsed.proximo_passo.nota : null,
+          scoreResolvida: parsed.resolvida.aplica ? parsed.resolvida.nota : null,
           notaConversa,
-          evidencias: safeEvidencias,
-          resumo1Linha: safeResumo,
-          entidades: (parsedData.entidades as any) ?? undefined,
+          evidencias: {
+            atrito: ev(parsed.atrito.evidencia),
+            solucao: ev(parsed.solucao.evidencia),
+            necessidade: ev(parsed.necessidade.evidencia),
+            proximo_passo: ev(parsed.proximo_passo.evidencia),
+            resolvida: ev(parsed.resolvida.evidencia),
+          },
+          resumo1Linha: cutText(truncateEvidence(parsed.resumo, 1000, anon), 200),
+          entidades: (parsed.entidades as any) ?? undefined,
           analyzedAt: new Date(),
           errorText: null,
-        },
-        create: {
-          tenantId,
-          sessionExternalId: session.externalId,
-          sessionId: session.id,
-          promptVersion,
-          model,
-          status: "done",
-          scoreAtrito: parsedData.atrito.aplica ? parsedData.atrito.nota : null,
-          scoreSolucao: parsedData.solucao.aplica ? parsedData.solucao.nota : null,
-          scoreNecessidade: parsedData.necessidade.aplica ? parsedData.necessidade.nota : null,
-          scoreProximoPasso: parsedData.proximo_passo.aplica ? parsedData.proximo_passo.nota : null,
-          scoreResolvida: parsedData.resolvida.aplica ? parsedData.resolvida.nota : null,
-          notaConversa,
-          evidencias: safeEvidencias,
-          resumo1Linha: safeResumo,
-          entidades: (parsedData.entidades as any) ?? undefined,
-          analyzedAt: new Date(),
-        },
-      });
-
-      console.log(`[Job D] Sessão ${session.externalId} analisada com sucesso: Nota ${notaConversa ?? "N/A"}`);
-    } catch (err: any) {
-      console.error(`[Job D] Erro ao analisar sessão ${session.externalId}:`, err.message);
-      await prisma.sessionAnalysis.upsert({
-        where: {
-          tenantId_sessionExternalId_promptVersion: {
-            tenantId,
-            sessionExternalId: session.externalId,
-            promptVersion,
-          },
-        },
-        update: {
+          nextRetryAt: null,
+          inputTokens: completion.usage?.prompt_tokens ?? null,
+          outputTokens: completion.usage?.completion_tokens ?? null,
+          costUsd: cost,
+          ...extra,
+        };
+        await prisma.sessionAnalysis.upsert({
+          where: key,
+          update: data,
+          create: { tenantId, sessionExternalId: session.externalId, sessionId: session.id, promptVersion, ...data },
+        });
+        done++;
+        console.log(`[Job D] Sessão ${session.externalId} analisada: nota ${notaConversa ?? "N/A"}`);
+      } catch (err: any) {
+        failed++;
+        const attempts = (prev?.attempts ?? 0) + 1;
+        console.error(`[Job D] Erro ao analisar sessão ${session.externalId} (tentativa ${attempts}):`, err.message);
+        const data = {
           status: "error",
-          errorText: err.message,
           model,
-        },
-        create: {
-          tenantId,
-          sessionExternalId: session.externalId,
-          sessionId: session.id,
-          promptVersion,
-          model,
-          status: "error",
-          errorText: err.message,
-        },
-      });
+          errorText: String(err.message).slice(0, 1000),
+          attempts,
+          nextRetryAt: new Date(Date.now() + nextRetryDelayMinutes(attempts) * 60_000),
+          ...extra,
+        };
+        await prisma.sessionAnalysis.upsert({
+          where: key,
+          update: data,
+          create: { tenantId, sessionExternalId: session.externalId, sessionId: session.id, promptVersion, ...data },
+        });
+      }
     }
   }
 
-  console.log("[Job D] Execução do Estágio 1 finalizada.");
+  console.log(
+    `[Job D] Finalizado: ${done} analisadas, ${skipped} puladas, ${failed} com erro${capEnabled ? `; gasto estimado US$ ${spent.toFixed(4)}` : ""}${capped ? " (teto atingido)" : ""}.`
+  );
 }

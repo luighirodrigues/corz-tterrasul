@@ -17,6 +17,11 @@ const envSchema = z.object({
   OPENAI_MAX_USD_PER_RUN: z.coerce.number().default(50.0),
   OPENAI_TIMEOUT_STAGE1_MS: z.coerce.number().default(60000),
   OPENAI_TIMEOUT_STAGE2_MS: z.coerce.number().default(120000),
+  // Preços em US$ por 1M de tokens (mudam; nada fixo no código). Sem preço, o teto de custo não se aplica.
+  OPENAI_PRICE_STAGE1_INPUT_PER_1M: z.coerce.number().default(0),
+  OPENAI_PRICE_STAGE1_OUTPUT_PER_1M: z.coerce.number().default(0),
+  STAGE1_MAX_TRANSCRIPT_TOKENS: z.coerce.number().default(8000),
+  STAGE1_MAX_ATTEMPTS: z.coerce.number().default(5),
   DEFAULT_TENANT_ID: z.string().default("tterrasul"),
   DEFAULT_TENANT_NAME: z.string().default("Tterrasul"),
   TIMEZONE: z.string().default("America/Sao_Paulo"),

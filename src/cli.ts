@@ -130,7 +130,13 @@ async function main() {
     case "stage1": {
       console.log("=== IA ESTÁGIO 1: ANÁLISE DE CONVERSAS FECHADAS (JOB D) ===");
       const limit = argValue(args, "--limit");
-      await runJobDStage1Analysis({ tenantId, limit: limit ? parseInt(limit, 10) : undefined });
+      await runJobDStage1Analysis({
+        tenantId,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        forceReanalyze: args.includes("--force"),
+        sessionExternalId: argValue(args, "--session"),
+        since: argValue(args, "--since"),
+      });
       break;
     }
 
@@ -170,7 +176,7 @@ Comandos:
                   [--from YYYY-MM-DD | --days N | --all | --resume]
   job:cards       Sync incremental apenas dos cards (Job B)                   [--from | --days | --all]
   job:synthetics  Métricas sintéticas da janela (Job C)                       [--week YYYY-MM-DD]
-  job:stage1      Análise de IA por sessão (Job D)                            [--limit N]
+  job:stage1      Análise de IA por sessão (Job D)     [--limit N | --since YYYY-MM-DD | --session ID | --force]
   job:report      Publica os relatórios da janela (Job E)
   pipeline        Sync + IA + relatório da janela
 
