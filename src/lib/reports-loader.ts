@@ -35,9 +35,14 @@ export async function loadReports(periodStart?: string): Promise<ReportItem[]> {
   const [rows, tenant, agents] = await Promise.all([
     prisma.periodReport.findMany({ where: { periodStart: start } }),
     prisma.tenant.findFirst(),
-    prisma.agent.findMany({ select: { externalId: true, name: true } }),
+    // scopeId do atendente = userId da sessão (≠ do id de cadastro em `agents`): o nome vem das sessões.
+    prisma.session.findMany({
+      where: { agentExternalId: { not: null }, agentName: { not: null } },
+      select: { agentExternalId: true, agentName: true },
+      distinct: ["agentExternalId"],
+    }),
   ]);
-  const agentNames = new Map(agents.map((a) => [a.externalId, a.name]));
+  const agentNames = new Map(agents.map((a) => [a.agentExternalId as string, a.agentName as string]));
 
   const order: Record<string, number> = { geral: 1, divisao: 2, painel: 3, agente: 4 };
 
@@ -56,7 +61,7 @@ export async function loadReports(periodStart?: string): Promise<ReportItem[]> {
         preliminar: r.preliminar,
         limitacoes: r.limitacoes,
         notaGeral: q?.notaGeral ?? null,
-        totalConversas: q?.n ?? 0,
+        totalConversas: q?.nComNota ?? q?.n ?? 0, // conversas com nota (base do anel)
         medias: q?.medias ?? {},
         histograma: q?.histograma ?? new Array(11).fill(0),
         sinteticos: r.sinteticos as any,

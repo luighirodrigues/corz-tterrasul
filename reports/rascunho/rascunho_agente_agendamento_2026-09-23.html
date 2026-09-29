@@ -1,40 +1,9 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import type { PeriodReport } from "../generated/client/index.js";
-import { SEM_RESPOSTA_ALERT_PCT } from "../lib/thresholds.js";
-
-export function escapeHtml(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-export function generateReportHtml(report: PeriodReport, scopeTitle: string): string {
-  const sinteticos = report.sinteticos as any;
-  const qualidade = report.qualidade as any;
-  const funil = report.funil as any;
-  const textoFortes = (report.textoFortes as any[]) || [];
-  const textoOps = (report.textoOps as any[]) || [];
-
-  const nota: number | null = qualidade.notaGeral ?? null;
-  const n = qualidade.nComNota ?? qualidade.n ?? 0; // conversas COM nota (base do anel)
-  const medias = qualidade.medias ?? {};
-  const histograma: number[] = qualidade.histograma || new Array(11).fill(0);
-  const maxHisto = Math.max(...histograma, 1);
-
-  // Formatar datas do período
-  const startStr = new Date(report.periodStart).toLocaleDateString("pt-BR");
-  const endStr = new Date(report.periodEnd).toLocaleDateString("pt-BR");
-
-  return `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Relatório de Qualidade — ${escapeHtml(scopeTitle)}</title>
+  <title>Relatório de Qualidade — RASCUNHO — Atendente - Agendamento</title>
   <style>
     :root {
       --bg-color: #f8fafc;
@@ -133,11 +102,11 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
     }
     .circle-bar {
       fill: none;
-      stroke: ${nota == null ? "#cbd5e1" : nota >= 8 ? "var(--success)" : nota >= 6 ? "var(--primary)" : "var(--warning)"};
+      stroke: var(--primary);
       stroke-width: 14;
       stroke-linecap: round;
       stroke-dasharray: 440;
-      stroke-dashoffset: ${440 - (440 * ((nota ?? 0) / 10))};
+      stroke-dashoffset: 118.80000000000001;
       transition: stroke-dashoffset 0.8s ease;
     }
     .circle-content {
@@ -239,65 +208,49 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
   <div class="container">
     <header>
       <div>
-        <h1>${escapeHtml(scopeTitle)}</h1>
-        <div class="period-badge">Período de Análise: <strong>${startStr}</strong> até <strong>${endStr}</strong></div>
+        <h1>RASCUNHO — Atendente - Agendamento</h1>
+        <div class="period-badge">Período de Análise: <strong>23/09/2026</strong> até <strong>29/09/2026</strong></div>
       </div>
       <div>
         <span style="font-size: 12px; color: var(--text-muted);">Padrão Pry / FLW Quality v1</span>
       </div>
     </header>
 
-    ${
-      report.limitacoes
-        ? `<div class="preliminar-warning"><strong>Limitações desta leva:</strong><ul style="margin: 6px 0 0 18px;">${report.limitacoes
-            .split("\n")
-            .filter(Boolean)
-            .map((l) => `<li>${escapeHtml(l)}</li>`)
-            .join("")}</ul></div>`
-        : ""
-    }
-    ${
-      report.correctedAt
-        ? `<div class="preliminar-warning">Corrigido em ${new Date(report.correctedAt).toLocaleDateString("pt-BR")} — motivo: ${escapeHtml(report.correctionReason ?? "")}</div>`
-        : ""
-    }
+    <div class="preliminar-warning"><strong>Limitações desta leva:</strong><ul style="margin: 6px 0 0 18px;"><li>Sem comparação com a semana anterior: só 0% das conversas dela têm análise na versão atual.</li><li>Conversas fora da nota: 2 puladas (sem fala humana), 171 ainda sem análise.</li><li>159 de 187 conversas sem card (sem esteira).</li></ul></div>
+    
 
-    ${
-      report.preliminar
-        ? `<div class="preliminar-warning">⚠️ <strong>Amostra Preliminar:</strong> Menos de 10 atendimentos analisados neste recorte (${n} conversas). Os números devem ser lidos como indicativo inicial.</div>`
-        : ""
-    }
+    
 
     <!-- 1. Faixa de KPIs Sintéticos -->
     <div class="kpi-strip">
       <div class="kpi-card">
         <div class="kpi-label">TMR Médio</div>
-        <div class="kpi-value">${sinteticos.tmrMedioFormatado || "0s"}</div>
+        <div class="kpi-value">2h 41m</div>
         <div class="kpi-sub">1ª resposta humana</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">FTR Mediana</div>
-        <div class="kpi-value">${sinteticos.ftrMedianaFormatada || "0s"}</div>
+        <div class="kpi-value">54h 41m</div>
         <div class="kpi-sub">Tempo de resolução</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Resp. Cliente</div>
-        <div class="kpi-value">${sinteticos.respClientePct ?? "N/D"}${sinteticos.respClientePct == null ? "" : "%"}</div>
+        <div class="kpi-value">82.9%</div>
         <div class="kpi-sub">Atendimentos respondidos</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Sem Resposta</div>
-        <div class="kpi-value" style="color: ${(sinteticos.semRespostaPct ?? 0) > SEM_RESPOSTA_ALERT_PCT ? 'var(--danger)' : 'inherit'}">${sinteticos.semRespostaPct ?? "N/D"}${sinteticos.semRespostaPct == null ? "" : "%"}</div>
+        <div class="kpi-value" style="color: inherit">17.1%</div>
         <div class="kpi-sub">Cliente ficou no vácuo</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Fechamento CRM</div>
-        <div class="kpi-value">${sinteticos.taxaFechamentoPct !== null ? `${sinteticos.taxaFechamentoPct}%` : "N/D"}</div>
+        <div class="kpi-value">0%</div>
         <div class="kpi-sub">Cards WON no período</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Reativação</div>
-        <div class="kpi-value">${sinteticos.reativacaoPct ?? "N/D"}${sinteticos.reativacaoPct == null ? "" : "%"}</div>
+        <div class="kpi-value">7.3%</div>
         <div class="kpi-sub">Retomada após ≥ 24h</div>
       </div>
     </div>
@@ -314,32 +267,64 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
               <circle class="circle-bar" cx="80" cy="80" r="70"></circle>
             </svg>
             <div class="circle-content">
-              <span class="ring-score">${nota == null ? "—" : nota.toFixed(1)}</span>
+              <span class="ring-score">7.3</span>
               <span class="ring-max">de 10</span>
             </div>
           </div>
-          ${
-              report.comparativo && (report.comparativo as any).deltaNota != null
-                ? `<div style="margin-top:6px;font-size:12px;font-weight:600;color:${(report.comparativo as any).deltaNota > 0 ? "var(--success)" : (report.comparativo as any).deltaNota < 0 ? "var(--danger)" : "var(--text-muted)"}" title="Semana anterior recalculada na régua atual">${(report.comparativo as any).deltaNota > 0 ? "▲ +" : (report.comparativo as any).deltaNota < 0 ? "▼ " : "• "}${(report.comparativo as any).deltaNota.toFixed(1)} vs semana anterior</div>`
-                : ""
-            }
+          
           <div class="ring-footer">
-            Baseado em <strong>${n}</strong> conversas finalizadas
+            Baseado em <strong>187</strong> conversas finalizadas
           </div>
         </div>
 
         <div style="margin-top: 20px;">
           <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Distribuição das Notas (0 a 10)</div>
           <div class="histo-container">
-            ${histograma
-              .map(
-                (count, idx) => `
-              <div class="histo-col" title="Nota ${idx}: ${count} conversas">
-                <div class="histo-bar" style="height: ${Math.round((count / maxHisto) * 100)}%;"></div>
-                <div class="histo-label">${idx}</div>
-              </div>`
-              )
-              .join("")}
+            
+              <div class="histo-col" title="Nota 0: 0 conversas">
+                <div class="histo-bar" style="height: 0%;"></div>
+                <div class="histo-label">0</div>
+              </div>
+              <div class="histo-col" title="Nota 1: 0 conversas">
+                <div class="histo-bar" style="height: 0%;"></div>
+                <div class="histo-label">1</div>
+              </div>
+              <div class="histo-col" title="Nota 2: 0 conversas">
+                <div class="histo-bar" style="height: 0%;"></div>
+                <div class="histo-label">2</div>
+              </div>
+              <div class="histo-col" title="Nota 3: 0 conversas">
+                <div class="histo-bar" style="height: 0%;"></div>
+                <div class="histo-label">3</div>
+              </div>
+              <div class="histo-col" title="Nota 4: 1 conversas">
+                <div class="histo-bar" style="height: 33%;"></div>
+                <div class="histo-label">4</div>
+              </div>
+              <div class="histo-col" title="Nota 5: 3 conversas">
+                <div class="histo-bar" style="height: 100%;"></div>
+                <div class="histo-label">5</div>
+              </div>
+              <div class="histo-col" title="Nota 6: 2 conversas">
+                <div class="histo-bar" style="height: 67%;"></div>
+                <div class="histo-label">6</div>
+              </div>
+              <div class="histo-col" title="Nota 7: 1 conversas">
+                <div class="histo-bar" style="height: 33%;"></div>
+                <div class="histo-label">7</div>
+              </div>
+              <div class="histo-col" title="Nota 8: 0 conversas">
+                <div class="histo-bar" style="height: 0%;"></div>
+                <div class="histo-label">8</div>
+              </div>
+              <div class="histo-col" title="Nota 9: 3 conversas">
+                <div class="histo-bar" style="height: 100%;"></div>
+                <div class="histo-label">9</div>
+              </div>
+              <div class="histo-col" title="Nota 10: 3 conversas">
+                <div class="histo-bar" style="height: 100%;"></div>
+                <div class="histo-label">10</div>
+              </div>
           </div>
         </div>
       </div>
@@ -351,101 +336,54 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
         <div class="criteria-item">
           <div class="criteria-header">
             <span class="criteria-name">Pouco ou Nenhum Atrito</span>
-            <span class="criteria-val">${medias.atrito ?? "N/D"}/10</span>
+            <span class="criteria-val">7.8/10</span>
           </div>
           <div class="progress-track">
-            <div class="progress-fill" style="width: ${(medias.atrito ?? 0) * 10}%; background: #3b82f6;"></div>
+            <div class="progress-fill" style="width: 78%; background: #3b82f6;"></div>
           </div>
         </div>
 
         <div class="criteria-item">
           <div class="criteria-header">
             <span class="criteria-name">Apresentou Solução Clara</span>
-            <span class="criteria-val">${medias.solucao ?? "N/D"}/10</span>
+            <span class="criteria-val">7.2/10</span>
           </div>
           <div class="progress-track">
-            <div class="progress-fill" style="width: ${(medias.solucao ?? 0) * 10}%; background: #10b981;"></div>
+            <div class="progress-fill" style="width: 72%; background: #10b981;"></div>
           </div>
         </div>
 
         <div class="criteria-item">
           <div class="criteria-header">
             <span class="criteria-name">Entendeu a Necessidade</span>
-            <span class="criteria-val">${medias.necessidade ?? "N/D"}/10</span>
+            <span class="criteria-val">8.2/10</span>
           </div>
           <div class="progress-track">
-            <div class="progress-fill" style="width: ${(medias.necessidade ?? 0) * 10}%; background: #6366f1;"></div>
+            <div class="progress-fill" style="width: 82%; background: #6366f1;"></div>
           </div>
         </div>
 
         <div class="criteria-item">
           <div class="criteria-header">
             <span class="criteria-name">Próximo Passo Combinado</span>
-            <span class="criteria-val">${medias.proximoPasso ?? "N/D"}/10</span>
+            <span class="criteria-val">6.5/10</span>
           </div>
           <div class="progress-track">
-            <div class="progress-fill" style="width: ${(medias.proximoPasso ?? 0) * 10}%; background: #f59e0b;"></div>
+            <div class="progress-fill" style="width: 65%; background: #f59e0b;"></div>
           </div>
         </div>
 
         <div class="criteria-item">
           <div class="criteria-header">
             <span class="criteria-name">Conversa Resolvida no Diálogo</span>
-            <span class="criteria-val">${medias.resolvida ?? "N/D"}/10</span>
+            <span class="criteria-val">6.5/10</span>
           </div>
           <div class="progress-track">
-            <div class="progress-fill" style="width: ${(medias.resolvida ?? 0) * 10}%; background: #8b5cf6;"></div>
+            <div class="progress-fill" style="width: 65%; background: #8b5cf6;"></div>
           </div>
         </div>
 
-        ${
-          funil
-            ? `
-        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-          <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">Cards no Funil CRM</div>
-          <div style="display: flex; gap: 12px; font-size: 13px; margin-bottom: 12px; flex-wrap: wrap;">
-            <div style="background: #f1f5f9; padding: 6px 12px; border-radius: 6px;">Total Cards: <strong>${(funil.open || 0) + (funil.won || 0) + (funil.lost || 0)}</strong></div>
-            <div style="background: #f1f5f9; padding: 6px 12px; border-radius: 6px;">Abertos: <strong>${funil.open || 0}</strong></div>
-            <div style="background: #dcfce7; padding: 6px 12px; border-radius: 6px;">Ganhos (WON): <strong style="color: var(--success);">${funil.won || 0}</strong></div>
-            <div style="background: #fee2e2; padding: 6px 12px; border-radius: 6px;">Perdidos (LOST): <strong style="color: var(--danger);">${funil.lost || 0}</strong></div>
-          </div>
-          ${
-            funil.etapas && Object.keys(funil.etapas).length > 0
-              ? `
-          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">Etapas do Pipeline</div>
-          <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;">
-            ${Object.entries(funil.etapas)
-              .map(
-                ([etapa, qtd]) => `
-              <div style="display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; background: #f8fafc; border-radius: 4px; border: 1px solid #f1f5f9;">
-                <span>${escapeHtml(etapa)}</span>
-                <strong>${qtd}</strong>
-              </div>`
-              )
-              .join("")}
-          </div>`
-              : ""
-          }
-          ${
-            funil.lostReasons && Object.keys(funil.lostReasons).length > 0
-              ? `
-          <div style="font-size: 11px; font-weight: 700; color: var(--danger); margin-bottom: 6px; text-transform: uppercase;">Motivos de Perda</div>
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            ${Object.entries(funil.lostReasons)
-              .map(
-                ([motivo, qtd]) => `
-              <div style="display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; background: #fef2f2; border-radius: 4px; border: 1px solid #fee2e2;">
-                <span>${escapeHtml(motivo)}</span>
-                <strong style="color: var(--danger);">${qtd}</strong>
-              </div>`
-              )
-              .join("")}
-          </div>`
-              : ""
-          }
-        </div>`
-            : ""
-        }
+        
       </div>
     </div>
 
@@ -456,67 +394,47 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
         <!-- Pontos Fortes -->
         <div>
           <h3 style="font-size: 14px; font-weight: 700; color: #166534; margin-bottom: 12px;">✅ Pontos Fortes Observados</h3>
-          ${
-            textoFortes.length === 0
-              ? `<p style="font-size: 13px; color: var(--text-muted);">Nenhum ponto forte registrado.</p>`
-              : `<ul class="bullet-list">
-                  ${textoFortes
-                    .map(
-                      (tf) => `
+          <ul class="bullet-list">
+                  
                     <li class="bullet-item strong">
-                      <span class="badge-count">${tf.n_casos} casos</span>
-                      <div>${escapeHtml(tf.texto)}</div>
-                    </li>`
-                    )
-                    .join("")}
-                </ul>`
-          }
+                      <span class="badge-count">9 casos</span>
+                      <div>Em 9 das 13 conversas, houve boa compreensão do que a pessoa precisava. Por exemplo, em um atendimento, a loja identificou o pedido de troca de óleo e apresentou opções de serviço.</div>
+                    </li>
+                    <li class="bullet-item strong">
+                      <span class="badge-count">7 casos</span>
+                      <div>Em 7 das 13 conversas, o atendimento fluiu sem dificuldade relevante. Em um caso, a pessoa pediu um horário específico e recebeu a confirmação sem necessidade de novas negociações.</div>
+                    </li>
+                    <li class="bullet-item strong">
+                      <span class="badge-count">6 casos</span>
+                      <div>Em 6 das 13 conversas, foi apresentada uma solução adequada ao pedido. Por exemplo, em um agendamento para troca de óleo, foram explicadas opções de pacote e as condições de pagamento.</div>
+                    </li>
+                </ul>
         </div>
 
         <!-- Oportunidades -->
         <div>
           <h3 style="font-size: 14px; font-weight: 700; color: #854d0e; margin-bottom: 12px;">💡 Oportunidades & Scripts Sugeridos</h3>
-          ${
-            textoOps.length === 0
-              ? `<p style="font-size: 13px; color: var(--text-muted);">Nenhuma oportunidade crítica registrada.</p>`
-              : `<ul class="bullet-list">
-                  ${textoOps
-                    .map(
-                      (to) => `
+          <ul class="bullet-list">
+                  
                     <li class="bullet-item opp">
-                      <span class="badge-count">${to.n_casos} casos</span>
-                      <div>${escapeHtml(to.texto)}</div>
-                      ${
-                        to.script_sugerido
-                          ? `<div class="script-box"><strong>Script Sugerido:</strong> "${escapeHtml(to.script_sugerido)}"</div>`
-                          : ""
-                      }
-                    </li>`
-                    )
-                    .join("")}
-                </ul>`
-          }
+                      <span class="badge-count">5 casos</span>
+                      <div>Em 5 das 13 conversas, o atendimento terminou sem concluir a solicitação ou definir um desfecho. Em um caso, parte do orçamento foi informada, mas a cotação pendente não foi concluída e não houve agendamento.</div>
+                      <div class="script-box"><strong>Script Sugerido:</strong> "Ainda estou verificando a cotação que falta. Assim que tiver o retorno, posso enviar os valores e ajudar você a definir como prefere seguir."</div>
+                    </li>
+                    <li class="bullet-item opp">
+                      <span class="badge-count">4 casos</span>
+                      <div>Em 4 das 12 conversas, faltou combinar claramente a próxima ação. Em um caso, foi sugerido um horário para remarcar, mas não houve confirmação de que ele atendia à pessoa.</div>
+                      <div class="script-box"><strong>Script Sugerido:</strong> "Esse horário funciona para você? Se estiver de acordo, confirmo o agendamento; caso contrário, posso verificar outra opção."</div>
+                    </li>
+                    <li class="bullet-item opp">
+                      <span class="badge-count">1 casos</span>
+                      <div>Em 1 das 13 conversas, a solução apresentada não foi suficiente para avançar com o pedido. Em um caso, a loja confirmou que poderia realizar a revisão, mas não informou os valores nem orientou sobre a agenda.</div>
+                      <div class="script-box"><strong>Script Sugerido:</strong> "Posso verificar o valor da revisão e as opções de agenda para você. Prefere que eu envie primeiro o orçamento ou que confira ambos juntos?"</div>
+                    </li>
+                </ul>
         </div>
       </div>
     </div>
   </div>
 </body>
-</html>`;
-}
-
-export async function exportReportHtml(
-  report: PeriodReport,
-  scopeTitle: string,
-  outputDir = "./reports",
-  customFileName?: string
-): Promise<string> {
-  const html = generateReportHtml(report, scopeTitle);
-  const dateStr = report.periodStart.toISOString().split("T")[0];
-  const fileName = customFileName || `relatorio_${report.scopeType}_${report.scopeId}_${dateStr}.html`;
-  const filePath = path.join(outputDir, fileName);
-
-  await fs.mkdir(outputDir, { recursive: true });
-  await fs.writeFile(filePath, html, "utf-8");
-
-  return filePath;
-}
+</html>

@@ -10,6 +10,7 @@ import { ensureTenant } from "../domain/tenant.js";
 import { aggregateQuality, CRITERION_LABEL, pickCases, type AnalysisRow, type Criterion } from "../domain/aggregate.js";
 import { parseList, tallyCards } from "../domain/lost-reasons.js";
 import { resolveSessionPanel } from "../domain/session-panel.js";
+import { withTemperature } from "../domain/openai-params.js";
 import {
   buildStage2Input,
   finalizeStage2,
@@ -329,15 +330,17 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
           pickCases(rows, available)
         );
 
-        const comp = await openai.chat.completions.create({
-          model,
-          temperature: 0.3,
-          messages: [
-            { role: "system", content: STAGE2_SYSTEM_PROMPT },
-            { role: "user", content: JSON.stringify(input) },
-          ],
-          response_format: { type: "json_schema", json_schema: stage2JsonSchema as any },
-        });
+        const comp = await withTemperature(model, 0.3, (temperature) =>
+          openai.chat.completions.create({
+            model,
+            ...(temperature !== undefined ? { temperature } : {}),
+            messages: [
+              { role: "system", content: STAGE2_SYSTEM_PROMPT },
+              { role: "user", content: JSON.stringify(input) },
+            ],
+            response_format: { type: "json_schema", json_schema: stage2JsonSchema as any },
+          })
+        );
 
         const choice = comp.choices[0];
         if (choice?.message?.refusal) throw new Error(`recusa do modelo: ${choice.message.refusal}`);

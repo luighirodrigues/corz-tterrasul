@@ -16,6 +16,7 @@ import {
   stage1JsonSchema,
 } from "../domain/stage1.js";
 import { truncateEvidence } from "../utils/anonymizer.js";
+import { withTemperature } from "../domain/openai-params.js";
 
 // Reexporta para manter compatibilidade com quem importa daqui.
 export { calculateNotaConversa, STAGE1_PROMPT_VERSION };
@@ -183,15 +184,17 @@ ${lines.map((l) => JSON.stringify(l)).join("\n")}`;
       };
 
       try {
-        const completion = await openai.chat.completions.create({
-          model,
-          temperature: 0,
-          messages: [
-            { role: "system", content: STAGE1_SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-          response_format: { type: "json_schema", json_schema: stage1JsonSchema as any },
-        });
+        const completion = await withTemperature(model, 0, (temperature) =>
+          openai.chat.completions.create({
+            model,
+            ...(temperature !== undefined ? { temperature } : {}),
+            messages: [
+              { role: "system", content: STAGE1_SYSTEM_PROMPT },
+              { role: "user", content: userPrompt },
+            ],
+            response_format: { type: "json_schema", json_schema: stage1JsonSchema as any },
+          })
+        );
 
         const cost = costUsd(completion.usage, prices);
         spent += cost;

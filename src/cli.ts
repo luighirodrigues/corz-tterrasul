@@ -62,11 +62,16 @@ async function publishPeriod(tenantId: string, args: string[], period: Period): 
     allowIncomplete,
   });
 
+  // O scopeId do atendente é o userId da sessão (≠ do id de cadastro em `agents`): o nome vem das sessões.
   const [tenant, agents] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
-    prisma.agent.findMany({ where: { tenantId }, select: { externalId: true, name: true } }),
+    prisma.session.findMany({
+      where: { tenantId, agentExternalId: { not: null }, agentName: { not: null } },
+      select: { agentExternalId: true, agentName: true },
+      distinct: ["agentExternalId"],
+    }),
   ]);
-  const agentNames = new Map(agents.map((a) => [a.externalId, a.name]));
+  const agentNames = new Map(agents.map((a) => [a.agentExternalId as string, a.agentName as string]));
   const day = period.label.split(" a ")[0];
 
   if (dryRun) {
