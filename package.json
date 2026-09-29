@@ -1,0 +1,63 @@
+{
+  "name": "corz-tterrasul-qualidade",
+  "version": "1.0.0",
+  "description": "Sistema de qualidade de conversas FLW Chat com métricas sintéticas e análise com IA",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/cli.ts",
+    "web": "next dev -p 3000",
+    "web:dev": "next dev -p 3000",
+    "web:build": "next build",
+    "web:start": "next start -p 3000",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
+    "prisma:studio": "prisma studio",
+    "job:sync": "tsx src/cli.ts sync",
+    "job:cards": "tsx src/cli.ts cards",
+    "job:synthetics": "tsx src/cli.ts synthetics",
+    "job:stage1": "tsx src/cli.ts stage1",
+    "job:report": "tsx src/cli.ts report",
+    "pipeline": "tsx src/cli.ts pipeline",
+    "seed": "tsx src/seed-demo.ts",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "flw",
+    "chat",
+    "qualidade",
+    "ia",
+    "openai",
+    "prisma",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "clsx": "^2.1.1",
+    "dotenv": "^16.4.7",
+    "lucide-react": "^1.48.0",
+    "next": "^16.3.6",
+    "openai": "^4.86.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.13.8",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.28",
+    "prisma": "^5.22.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}

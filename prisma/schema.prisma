@@ -1,0 +1,247 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+// -------------------------------------------------------------
+// Tenant (Empresa / Loja configurada)
+// -------------------------------------------------------------
+model Tenant {
+  id                 String   @id
+  name               String
+  token              String?
+  panelVendasId      String?  @map("panel_vendas_id")
+  panelCampanhasId   String?  @map("panel_campanhas_id")
+  panelPecasId       String?  @map("panel_pecas_id")
+  panelOficinaId     String?  @map("panel_oficina_id")
+  ignoredLostReasons String?  @map("ignored_lost_reasons") // motivos separados por vírgula
+  timezone           String   @default("America/Sao_Paulo")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  agents          Agent[]
+  sessions        Session[]
+  messages        Message[]
+  panelCards      PanelCard[]
+  syncJobs        SyncJob[]
+  sessionAnalyses SessionAnalysis[]
+  periodReports   PeriodReport[]
+
+  @@map("tenants")
+}
+
+// -------------------------------------------------------------
+// Espelho de Agentes (GET /v1/agent)
+// -------------------------------------------------------------
+model Agent {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  externalId String   @map("external_id")
+  name       String
+  email      String?
+  role       String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, name])
+  @@map("agents")
+}
+
+// -------------------------------------------------------------
+// Espelho de Sessões (GET /v2/session)
+// -------------------------------------------------------------
+model Session {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  externalId          String    @map("external_id") // ID UUID da sessão na FLW
+  number              String?
+  title               String?
+  contactId           String?   @map("contact_id")
+  contactName         String?   @map("contact_name")
+  contactPhone        String?   @map("contact_phone")
+  channelId           String?   @map("channel_id")
+  channelType         String?   @map("channel_type")
+  agentExternalId     String?   @map("agent_external_id")
+  agentId             String?   @map("agent_id")
+  agentName           String?   @map("agent_name")
+  departmentId        String?   @map("department_id")
+  departmentName      String?   @map("department_name")
+  status              String    // IN_PROGRESS, COMPLETED, CANCELED, etc.
+  startAt             DateTime? @map("start_at")
+  firstResponseAt     DateTime? @map("first_response_at")
+  endAt               DateTime? @map("end_at")
+  lastInteractionDate DateTime? @map("last_interaction_date")
+  timeWait            Int?      @map("time_wait")
+  timeService         Int?      @map("time_service")
+  flwCreatedAt        DateTime? @map("flw_created_at")
+  flwUpdatedAt        DateTime? @map("flw_updated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent      Agent?            @relation(fields: [agentId], references: [id])
+  messages   Message[]
+  panelCards PanelCard[]
+  analyses   SessionAnalysis[]
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, status, endAt])
+  @@index([tenantId, agentExternalId])
+  @@index([tenantId, contactId])
+  @@map("sessions")
+}
+
+// -------------------------------------------------------------
+// Espelho de Mensagens (GET /v1/session/{id}/message)
+// -------------------------------------------------------------
+model Message {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  externalId    String   @map("external_id") // ID da mensagem na FLW
+  sessionId     String   @map("session_id")
+  timestamp     DateTime
+  direction     String   // TO_HUB (cliente), FROM_HUB (operação)
+  origin        String   // BOT, DEFAULT, API, etc.
+  type          String   // TEXT, AUDIO, IMAGE, NOTE, TRACK, TRANSITION, etc.
+  status        String?  // SENT, DELIVERED, READ, etc.
+  text          String?  @db.Text
+  fileUrl       String?  @map("file_url")
+  transcription String?  @db.Text
+  senderId      String?  @map("sender_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalId])
+  @@index([sessionId, timestamp])
+  @@index([tenantId, direction, origin])
+  @@map("messages")
+}
+
+// -------------------------------------------------------------
+// Espelho de Cards dos Painéis CRM (GET /v2/panel/card)
+// -------------------------------------------------------------
+model PanelCard {
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  externalId        String    @map("external_id") // ID do card na FLW
+  panelId           String    @map("panel_id")
+  stepId            String?   @map("step_id")
+  stepTitle         String?   @map("step_title")
+  status            String    // OPEN, WON, LOST
+  lostReason        String?   @map("lost_reason")
+  responsibleUserId String?   @map("responsible_user_id")
+  sessionExternalId String?   @map("session_external_id")
+  sessionId         String?   @map("session_id")
+  flwCreatedAt      DateTime? @map("flw_created_at")
+  flwUpdatedAt      DateTime? @map("flw_updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id])
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, panelId, status])
+  @@index([tenantId, sessionExternalId])
+  @@map("panel_cards")
+}
+
+// -------------------------------------------------------------
+// Controle de Checkpoint de Jobs Retomáveis
+// -------------------------------------------------------------
+model SyncJob {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  jobType      String    @map("job_type") // SYNC_SESSIONS, SYNC_CARDS
+  cursorDate   DateTime? @map("cursor_date")
+  currentPage  Int       @default(1) @map("current_page")
+  currentIndex Int       @default(0) @map("current_index")
+  status       String    @default("pending") // pending, running, paused, completed, failed
+  itemsSeen    Int       @default(0) @map("items_seen")
+  itemsSuccess Int       @default(0) @map("items_success")
+  itemsFailed  Int       @default(0) @map("items_failed")
+  errorMessage String?   @map("error_message")
+  startedAt    DateTime? @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, jobType, status])
+  @@map("sync_jobs")
+}
+
+// -------------------------------------------------------------
+// IA Estágio 1: Análise por Sessão COMPLETED
+// -------------------------------------------------------------
+model SessionAnalysis {
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  sessionExternalId String    @map("session_external_id")
+  sessionId         String    @map("session_id")
+  promptVersion     String    @map("prompt_version") // ex: "stage1-v1"
+  model             String    // ex: "gpt-4.1-mini"
+  status            String    // pending, done, error, skipped
+  skippedReason     String?   @map("skipped_reason")
+  scoreAtrito       Int?      @map("score_atrito") // 0-10 (10 = sem atrito)
+  scoreSolucao      Int?      @map("score_solucao")
+  scoreNecessidade  Int?      @map("score_necessidade")
+  scoreProximoPasso Int?      @map("score_proximo_passo")
+  scoreResolvida    Int?      @map("score_resolvida")
+  notaConversa      Float?    @map("nota_conversa") // Média aritmética dos critérios válidos
+  evidencias        Json?     // Citação curta anonimizada por critério
+  resumo1Linha      String?   @map("resumo_1linha")
+  entidades         Json?     // Ex: { interesse: "BMW X1" }
+  analyzedAt        DateTime? @map("analyzed_at")
+  errorText         String?   @map("error_text")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sessionExternalId, promptVersion])
+  @@index([tenantId, status])
+  @@index([tenantId, notaConversa])
+  @@map("session_analyses")
+}
+
+// -------------------------------------------------------------
+// IA Estágio 2 & Relatórios Periódicos (Snapshots Imutáveis)
+// -------------------------------------------------------------
+model PeriodReport {
+  id                  String   @id @default(uuid())
+  tenantId            String   @map("tenant_id")
+  periodStart         DateTime @map("period_start")
+  periodEnd           DateTime @map("period_end")
+  scopeType           String   @map("scope_type") // geral, divisao, painel, agente
+  scopeId             String   @map("scope_id")   // painel_id, agent_external_id, carros, pecas, geral
+  sinteticos          Json     // { tmrMedio, ftrMediana, respCliente, semResposta, taxaFechamento, reativacao, n }
+  qualidade           Json     // { medias, notaGeral, histograma, n }
+  funil               Json?    // { etapas, open, won, lost, lostReasons }
+  textoFortes         Json?    @map("texto_fortes") // bullets com n_casos, texto, script
+  textoOps            Json?    @map("texto_ops")    // bullets com n_casos, texto, script
+  preliminar          Boolean  @default(false)      // se n < 10
+  limitacoes          String?  // avisos de auditoria
+  promptVersionSintese String? @map("prompt_version_sintese")
+  model               String?
+  publishedAt         DateTime @default(now()) @map("published_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, periodStart, periodEnd, scopeType, scopeId])
+  @@index([tenantId, periodStart, periodEnd])
+  @@map("period_reports")
+}
