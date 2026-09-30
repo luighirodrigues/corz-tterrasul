@@ -274,9 +274,14 @@ export class FlwClient {
       const url = new URL(`${this.crmUrl}/v1/panel/${panelId}/lost-reason`);
       url.searchParams.set("PageNumber", String(page));
       url.searchParams.set("PageSize", "100");
-      const res = await this.request<FlwPagination<{ id?: string; name: string }>>(url.toString());
+      // Este endpoint devolve o texto em `description` (o `name` é do objeto dentro do card).
+      type Raw = { id?: string; description?: string; name?: string };
+      const res = await this.request<FlwPagination<Raw>>(url.toString());
       const items = res.items || res.data || [];
-      out.push(...items);
+      for (const it of items) {
+        const text = (it.description ?? it.name ?? "").trim();
+        if (text) out.push({ id: it.id, name: text });
+      }
       hasMore = Boolean(res.hasMorePages && items.length > 0);
       page++;
     }

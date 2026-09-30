@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeSessionMetrics, median, type TimedMessage } from "../src/domain/session-metrics.js";
 import { isAutomatedMessage, isClientMessage, isHumanOperatorMessage } from "../src/domain/message-kind.js";
-import { classifyLostReason, closingRate, tallyCards } from "../src/domain/lost-reasons.js";
+import { classifyLostReason, closingRate, parseList, tallyCards } from "../src/domain/lost-reasons.js";
 import { resolveSessionPanel } from "../src/domain/session-panel.js";
 
 const at = (hhmm: string, day = "2026-09-24") => new Date(`${day}T${hhmm}:00Z`);
@@ -187,6 +187,18 @@ describe("lost-reasons (M18)", () => {
     );
     expect(t).toMatchObject({ won: 1, open: 1, lost: 1, lostHygiene: 1, lostOutOfControl: 1 });
     expect(closingRate(t)).toBe(33.3);
+  });
+
+  it("lista com ';' preserva motivos que têm vírgula no nome", () => {
+    const l = parseList("Duplicado; Já é cliente, transferido para outro setor");
+    expect(l).toEqual(["duplicado", "ja e cliente, transferido para outro setor"]);
+    expect(
+      classifyLostReason("Já é cliente, transferido para outro setor", { outOfControl: [], hygiene: l })
+    ).toBe("hygiene");
+  });
+
+  it("sem ';' continua aceitando vírgula", () => {
+    expect(parseList("a, b")).toEqual(["a", "b"]);
   });
 
   it("sem cards: taxa nula", () => {

@@ -74,8 +74,10 @@ export async function runJobDStage1Analysis(options: Stage1Options = {}): Promis
   const where: any = {
     tenantId,
     status: "COMPLETED",
-    ...(options.sessionExternalId ? { externalId: options.sessionExternalId } : {}),
-    ...(since && !options.sessionExternalId ? { endAt: { gte: since } } : {}),
+    // Sem `endAt` a sessão não pertence a nenhuma janela; e a paginação abaixo precisa dele.
+    ...(options.sessionExternalId
+      ? { externalId: options.sessionExternalId }
+      : { endAt: { not: null, ...(since ? { gte: since } : {}) } }),
     ...(options.forceReanalyze || options.sessionExternalId
       ? {}
       : {
@@ -100,21 +102,30 @@ export async function runJobDStage1Analysis(options: Stage1Options = {}): Promis
   let failed = 0;
   let spent = 0;
   let capped = false;
-  let cursor: string | undefined;
+  // Paginação pelo VALOR (endAt, id), não por cursor de registro: as sessões recém-processadas
+  // saem da fila (done/skipped) e um cursor apontando para elas devolveria uma página vazia.
+  let last: { endAt: Date; id: string } | null = null;
 
   outer: while (true) {
-    const batch = await prisma.session.findMany({
-      where,
+    const batch: Array<any> = await prisma.session.findMany({
+      where: last
+        ? {
+            AND: [
+              where,
+              { OR: [{ endAt: { lt: last.endAt } }, { endAt: last.endAt, id: { gt: last.id } }] },
+            ],
+          }
+        : where,
       orderBy: [{ endAt: "desc" }, { id: "asc" }],
       take: BATCH_SIZE,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
         messages: { orderBy: { timestamp: "asc" } },
         panelCards: { select: { panelId: true, panelTitle: true, stepTitle: true, status: true, flwUpdatedAt: true } },
       },
     });
     if (batch.length === 0) break;
-    cursor = batch[batch.length - 1].id;
+    const tail = batch[batch.length - 1];
+    last = { endAt: tail.endAt as Date, id: tail.id };
 
     for (const session of batch) {
       if (options.limit !== undefined && processed >= options.limit) break outer;

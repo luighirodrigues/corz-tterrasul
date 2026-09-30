@@ -8,8 +8,14 @@ export interface LostReasonLists {
 const norm = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
 
-export const parseList = (csv: string | null | undefined): string[] =>
-  (csv ?? "").split(",").map(norm).filter(Boolean);
+/**
+ * Lista de motivos vinda do .env. Separador `;` (recomendado: há motivos com vírgula no nome,
+ * como "Já é cliente, transferido para outro setor"). Sem nenhum `;`, cai no separador `,`.
+ */
+export const parseList = (csv: string | null | undefined): string[] => {
+  const raw = csv ?? "";
+  return raw.split(raw.includes(";") ? ";" : ",").map(norm).filter(Boolean);
+};
 
 /** Casamento EXATO (normalizado), nunca por substring. Sem lista configurada, tudo conta. */
 export function classifyLostReason(reason: string | null | undefined, lists: LostReasonLists): LostClass {

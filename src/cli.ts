@@ -6,7 +6,8 @@ import { calculateSynthetics } from "./jobs/job-c-synthetics.js";
 import { runJobDStage1Analysis } from "./jobs/job-d-stage1-analysis.js";
 import { runJobEStage2Reports } from "./jobs/job-e-stage2-report.js";
 import { exportReportHtml } from "./report/html-reporter.js";
-import { ensureTenant } from "./domain/tenant.js";
+import { ensureTenant, panelConfigFromEnv } from "./domain/tenant.js";
+import { PANEL_KEYS, resolvePanelIds, type PanelKey } from "./domain/panels.js";
 import { lastClosedPeriod, periodContaining, type Period } from "./domain/period.js";
 import { resolveScopeTitle } from "./domain/scope-title.js";
 import { withAdvisoryLock } from "./domain/lock.js";
@@ -153,22 +154,18 @@ async function run(command: string, args: string[]) {
     }
 
     case "config:lost-reasons": {
+      // Só lê da FLW: não precisa do banco (usa IDs/títulos e o token do .env).
       console.log("=== MOTIVOS DE PERDA CADASTRADOS NOS PAINÉIS ===");
-      const tenant = await ensureTenant(tenantId);
-      const client = new FlwClient({ token: tenant.token || undefined });
-      const panels = [
-        ["Vendas", tenant.panelVendasId],
-        ["Campanhas", tenant.panelCampanhasId],
-        ["Peças", tenant.panelPecasId],
-        ["Oficina", tenant.panelOficinaId],
-      ] as const;
-      for (const [name, id] of panels) {
-        if (!id) {
-          console.log(`\n${name}: painel não resolvido (rode "job:cards" uma vez ou configure PANEL_*_ID).`);
-          continue;
-        }
-        const reasons = await client.listPanelLostReasons(id);
-        console.log(`\n${name} (${id}):`);
+      const client = new FlwClient();
+      const cfg = panelConfigFromEnv();
+      const resolved: Record<PanelKey, string> = PANEL_KEYS.every((k) => cfg.ids[k])
+        ? (cfg.ids as Record<PanelKey, string>)
+        : resolvePanelIds(await client.listPanels(), cfg);
+      const names: Record<PanelKey, string> = { vendas: "Vendas", campanhas: "Campanhas", pecas: "Peças", oficina: "Oficina" };
+      for (const key of PANEL_KEYS) {
+        const reasons = await client.listPanelLostReasons(resolved[key]);
+        console.log(`\n${names[key]} (${resolved[key]}):`);
+        if (reasons.length === 0) console.log("  (nenhum motivo cadastrado)");
         for (const r of reasons) console.log(`  - ${r.name}`);
       }
       console.log("\nCopie os nomes EXATOS para IGNORED_LOST_REASONS (fora do controle) e HYGIENE_LOST_REASONS (higienização).");
@@ -234,7 +231,7 @@ const argv = process.argv.slice(2);
 const command = argv[0] || "help";
 
 // Só um job por vez (evita chamadas duplicadas à FLW e à OpenAI). A ajuda não precisa de banco.
-(command === "help" || !argv.length ? run(command, argv) : withAdvisoryLock("flw-quality", () => run(command, argv)))
+(["help", "config:lost-reasons"].includes(command) || !argv.length ? run(command, argv) : withAdvisoryLock("flw-quality", () => run(command, argv)))
   .catch((err) => {
     console.error("Erro na execução do CLI:", err.message ?? err);
     process.exit(1);
