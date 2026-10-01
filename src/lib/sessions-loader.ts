@@ -3,10 +3,23 @@ import { anonymizeText } from "@/utils/anonymizer";
 import { isClientMessage } from "@/domain/message-kind";
 import type { SessionDetail } from "./types";
 
-export async function loadAuditedSessions(agentSlug?: string): Promise<SessionDetail[]> {
+export async function loadAuditedSessions(options: { agent?: string; periodStart?: string } = {}): Promise<SessionDetail[]> {
+  const agentSlug = options.agent;
+
+  // Semana: a informada ou, sem ela, a última publicada (mesma regra de loadReports).
+  const startDate = options.periodStart ? new Date(options.periodStart) : undefined;
+  if (startDate && isNaN(startDate.getTime())) throw new Error("period inválido");
+  const report = await prisma.periodReport.findFirst({
+    where: startDate ? { periodStart: startDate } : {},
+    orderBy: { periodStart: "desc" },
+    select: { periodStart: true, periodEnd: true },
+  });
+  if (!report) return [];
+
   const dbSessions = await prisma.session.findMany({
     where: {
       status: "COMPLETED",
+      endAt: { gte: report.periodStart, lte: report.periodEnd },
       analyses: { some: { status: "done" } },
       ...(agentSlug ? { agentName: { contains: agentSlug, mode: "insensitive" as const } } : {}),
     },

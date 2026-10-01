@@ -1,7 +1,11 @@
-import React from "react";
+"use client";
+
+import React, { useEffect } from "react";
 import type { SessionDetail } from "@/lib/types";
 import { AUTOMATED_ORIGINS } from "@/domain/message-kind";
-import { X, Clock, User, Phone, Bot, CheckCircle, ShieldAlert } from "lucide-react";
+import { Bot, Clock, Layers, User, X } from "lucide-react";
+import { CRITERIOS, origemAutomatica, scoreStatus, TONE_CHIP } from "@/lib/labels";
+import { fmtDuracao, fmtNota } from "@/lib/format";
 
 interface ConversationModalProps {
   session: SessionDetail | null;
@@ -9,135 +13,110 @@ interface ConversationModalProps {
 }
 
 export const ConversationModal: React.FC<ConversationModalProps> = ({ session, onClose }) => {
+  useEffect(() => {
+    if (!session) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [session, onClose]);
+
   if (!session) return null;
+  const status = scoreStatus(session.notaConversa);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
-        {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
-              {session.agentName.charAt(0)}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-base">
-                  Conversa #{session.number || session.id.slice(0, 8)}
-                </h3>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                  Nota {session.notaConversa == null ? "N/D" : session.notaConversa.toFixed(1)}/10
-                </span>
-                <span className="text-xs text-slate-400">• {session.panelName}</span>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                <span className="flex items-center gap-1">
-                  <User className="w-3.5 h-3.5" /> {session.agentName}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5" /> {session.contactPhone}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" /> {session.startAt ?? "N/D"} ({session.durationMinutes ?? "N/D"} min)
-                </span>
-              </div>
+    <div
+      className="fixed inset-0 z-50 bg-ink/45 flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Detalhe da conversa"
+    >
+      <div
+        className="bg-surface rounded-2xl shadow-menu w-full max-w-[1100px] max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-divider">
+          <div className="flex flex-col gap-1 min-w-0">
+            <h2 className="text-xl font-medium">Conversa de {session.startAt?.slice(0, 10) ?? "data não informada"}</h2>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-muted">
+              <span className="inline-flex items-center gap-1.5"><User className="w-4 h-4" strokeWidth={1.75} />{session.agentName}</span>
+              <span className="inline-flex items-center gap-1.5"><Layers className="w-4 h-4" strokeWidth={1.75} />{session.panelName}</span>
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="w-4 h-4" strokeWidth={1.75} />
+                {session.durationMinutes == null ? "—" : fmtDuracao(session.durationMinutes * 60)}
+              </span>
             </div>
           </div>
-
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <span className="text-[28px] leading-9 font-medium">{fmtNota(session.notaConversa)}</span>
+              <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-xs font-medium ${TONE_CHIP[status.tone]}`}>{status.label}</span>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-muted hover:bg-subtle"
+            >
+              <X className="w-[22px] h-[22px]" strokeWidth={1.75} />
+            </button>
+          </div>
         </div>
 
-        {/* Content Body: Split into AI Rubric & Transcript */}
-        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left: AI Assessment (5 cols) */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                Resumo em 1 Linha (IA)
-              </span>
-              <p className="text-xs font-medium text-slate-800 leading-relaxed">
-                {session.resumo1Linha ? `"${session.resumo1Linha}"` : "Resumo indisponível"}
-              </p>
+        <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden flex flex-col lg:flex-row">
+          <div className="lg:flex-[5_1_0] min-w-0 p-6 border-b lg:border-b-0 lg:border-r border-divider flex flex-col gap-6 lg:overflow-y-auto">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted">Resumo</span>
+              <p className="leading-[22px]">{session.resumo1Linha ?? "Resumo indisponível."}</p>
             </div>
-
-            <div>
-              <span className="text-xs font-bold text-slate-900 block mb-2.5">
-                Avaliação dos 5 Critérios & Evidências
-              </span>
-
-              <div className="space-y-2.5">
-                {[
-                  { label: "Pouco Atrito", score: session.scores.atrito, key: "atrito" },
-                  { label: "Solução Clara", score: session.scores.solucao, key: "solucao" },
-                  { label: "Necessidade", score: session.scores.necessidade, key: "necessidade" },
-                  { label: "Próximo Passo", score: session.scores.proximoPasso, key: "proximo_passo" },
-                  { label: "Resolvida", score: session.scores.resolvida, key: "resolvida" },
-                ].map((crit) => {
-                  const ev = session.evidencias?.[crit.key];
-                  return (
-                    <div key={crit.key} className="p-3 rounded-lg border border-slate-100 bg-white shadow-2xs">
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="font-semibold text-slate-700">{crit.label}</span>
-                        <span className="font-bold text-slate-900">
-                          {crit.score !== null ? `${crit.score}/10` : "N/A"}
-                        </span>
-                      </div>
-                      {ev && (
-                        <p className="text-[11px] text-slate-500 italic mt-1 leading-snug">
-                          "{ev}"
-                        </p>
-                      )}
+            <div className="flex flex-col">
+              <span className="text-base font-medium pb-2">Avaliação por critério</span>
+              {CRITERIOS.map((c) => {
+                const nota = session.scores[c.key];
+                const ev = session.evidencias?.[c.key === "proximoPasso" ? "proximo_passo" : c.key];
+                return (
+                  <div key={c.key} className="flex flex-col gap-1 py-3 border-b border-divider last:border-b-0">
+                    <div className="flex justify-between">
+                      <span className="font-medium">{c.label}</span>
+                      <span className="font-medium">{nota == null ? "—" : nota}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    {ev && <span className="text-[13px] text-muted">“{ev}”</span>}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Right: Message Transcript (7 cols) */}
-          <div className="lg:col-span-7 flex flex-col">
-            <div className="text-xs font-bold text-slate-900 mb-3 flex items-center justify-between">
-              <span>Transcrição Anonimizada do WhatsApp</span>
-              <span className="text-[11px] text-slate-400 font-normal">
-                {session.messages.length} mensagens
-              </span>
+          <div className="lg:flex-[7_1_0] min-w-0 p-6 flex flex-col gap-3 lg:min-h-0">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-base font-medium">Mensagens</span>
+              <span className="text-xs text-muted">Nome e telefone do cliente ficam ocultos</span>
             </div>
-
-            <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100 flex-1 overflow-y-auto max-h-[460px]">
+            <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto bg-page rounded-card p-4 flex flex-col gap-3.5">
               {session.messages.map((m) => {
-                const isClient = m.sender === "cliente";
-                const isBot = AUTOMATED_ORIGINS.has(m.origin);
-
+                const cliente = m.sender === "cliente";
+                const auto = AUTOMATED_ORIGINS.has(m.origin);
                 return (
-                  <div
-                    key={m.id}
-                    className={`flex flex-col ${isClient ? "items-start" : "items-end"}`}
-                  >
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mb-0.5 px-1">
-                      {isBot ? (
-                        <span className="flex items-center gap-1 font-semibold text-amber-600">
-                          <Bot className="w-3 h-3" /> [AUTOMÁTICO · {m.origin}]
-                        </span>
-                      ) : isClient ? (
-                        <span>Cliente</span>
+                  <div key={m.id} className={`flex flex-col gap-1 ${cliente ? "items-start" : "items-end"}`}>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+                      {auto ? (
+                        <>
+                          <Bot className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          Mensagem automática · {origemAutomatica(m.origin)} · {m.timestamp}
+                        </>
+                      ) : cliente ? (
+                        <>Cliente · {m.timestamp}</>
                       ) : (
-                        <span className="font-medium text-blue-600">{session.agentName}</span>
+                        <span className="text-primary-ink font-medium">{session.agentName} · {m.timestamp}</span>
                       )}
-                      <span>• {m.timestamp}</span>
-                    </div>
-
+                    </span>
                     <div
-                      className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed ${
-                        isClient
-                          ? "bg-white text-slate-800 rounded-tl-xs border border-slate-200/80 shadow-2xs"
-                          : isBot
-                          ? "bg-amber-50 text-amber-900 rounded-tr-xs border border-amber-200/60"
-                          : "bg-blue-600 text-white rounded-tr-xs shadow-xs"
+                      className={`max-w-[80%] px-3.5 py-2.5 leading-[21px] whitespace-pre-wrap break-words ${
+                        cliente
+                          ? "bg-surface border border-line rounded-[4px_16px_16px_16px]"
+                          : auto
+                            ? "bg-subtle border border-divider rounded-[16px_4px_16px_16px]"
+                            : "bg-primary-soft rounded-[16px_4px_16px_16px]"
                       }`}
                     >
                       {m.text}

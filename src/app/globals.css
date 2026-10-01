@@ -1,25 +1,53 @@
 @import "tailwindcss";
 
-@layer base {
-  body {
-    background-color: #f8fafc;
-    color: #0f172a;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  }
+@theme inline {
+  --font-sans: var(--font-figtree), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* Custom subtle scrollbar */
+@theme {
+  /* neutros */
+  --color-page: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-line: #DADCE0;
+  --color-divider: #E8EAED;
+  --color-subtle: #F1F3F4;
+  --color-ink: #202124;
+  --color-ink-2: #3C4043;
+  --color-muted: #5F6368;
+
+  /* destaque */
+  --color-primary: #1A73E8;
+  --color-primary-hover: #1765CC;
+  --color-primary-soft: #E8F0FE;
+  --color-primary-ink: #174EA6;
+  --color-primary-faint: #AECBFA;
+
+  /* status: texto / fundo / gráfico */
+  --color-good: #137333;
+  --color-good-soft: #E6F4EA;
+  --color-good-fill: #1E8E3E;
+  --color-warn: #A15C00;
+  --color-warn-soft: #FEF7E0;
+  --color-warn-fill: #E37400;
+  --color-bad: #C5221F;
+  --color-bad-soft: #FCE8E6;
+  --color-bad-fill: #D93025;
+
+  --radius-card: 12px;
+  --shadow-menu: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--color-line);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--color-muted);
 }

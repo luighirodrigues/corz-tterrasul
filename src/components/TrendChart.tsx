@@ -1,4 +1,5 @@
 import React from "react";
+import { fmtDiaMes, fmtNota } from "@/lib/format";
 
 export interface TrendPoint {
   periodStart: string;
@@ -13,12 +14,10 @@ interface TrendChartProps {
   highlightStart?: string;
 }
 
-const day = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-
 /** Um ponto por semana, com o valor oficial publicado. */
 export const TrendChart: React.FC<TrendChartProps> = ({ points, highlightStart }) => {
   if (points.length < 2) {
-    return <p className="text-xs text-slate-400 italic">Histórico semanal aparece a partir da 2ª semana publicada.</p>;
+    return <p className="text-[13px] text-muted">O gráfico aparece a partir da 2ª semana publicada.</p>;
   }
 
   const W = 320;
@@ -32,27 +31,27 @@ export const TrendChart: React.FC<TrendChartProps> = ({ points, highlightStart }
   const path = valid.map(({ p, i }, k) => `${k === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.notaGeral!).toFixed(1)}`).join(" ");
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Nota geral por semana">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Nota por semana">
       {[0, 5, 10].map((g) => (
         <g key={g}>
-          <line x1={padX} x2={W - padX} y1={y(g)} y2={y(g)} stroke="#e2e8f0" strokeWidth="1" />
-          <text x={2} y={y(g) + 3} fontSize="8" fill="#94a3b8">{g}</text>
+          <line x1={padX} x2={W - padX} y1={y(g)} y2={y(g)} stroke="var(--color-divider)" strokeWidth="1" />
+          <text x={2} y={y(g) + 3} fontSize="8" fill="var(--color-muted)">{g}</text>
         </g>
       ))}
-      <path d={path} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinejoin="round" />
+      <path d={path} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinejoin="round" />
       {valid.map(({ p, i }) => (
         <g key={p.periodStart}>
           <circle
             cx={x(i)}
             cy={y(p.notaGeral!)}
             r={p.periodStart === highlightStart ? 5 : 3.5}
-            fill={p.preliminar ? "#fff" : "#2563eb"}
-            stroke="#2563eb"
+            fill={p.preliminar ? "#fff" : "var(--color-primary)"}
+            stroke="var(--color-primary)"
             strokeWidth="2"
           >
-            <title>{`${day(p.periodStart)} a ${day(p.periodEnd)}: ${p.notaGeral!.toFixed(1)} (${p.n} conversas${p.preliminar ? ", preliminar" : ""})`}</title>
+            <title>{`Semana de ${fmtDiaMes(p.periodStart)} a ${fmtDiaMes(p.periodEnd)}: nota ${fmtNota(p.notaGeral)} (${p.n} conversas${p.preliminar ? ", amostra pequena" : ""})`}</title>
           </circle>
-          <text x={x(i)} y={H - 2} fontSize="8" textAnchor="middle" fill="#64748b">{day(p.periodStart)}</text>
+          <text x={x(i)} y={H - 2} fontSize="8" textAnchor="middle" fill="var(--color-muted)">{fmtDiaMes(p.periodStart)}</text>
         </g>
       ))}
     </svg>

@@ -1,85 +1,60 @@
 import React from "react";
 import type { KpiMetrics } from "@/lib/types";
 import { SEM_RESPOSTA_ALERT_PCT } from "@/lib/thresholds";
-import { Clock, CheckCircle2, AlertTriangle, TrendingUp, RefreshCw, Zap } from "lucide-react";
+import { fmtDuracao, fmtPct } from "@/lib/format";
 
 interface KpiStripProps {
   metrics: KpiMetrics;
 }
 
+const Card: React.FC<{ label: string; value: string; hint?: React.ReactNode; alert?: boolean; className?: string }> = ({
+  label,
+  value,
+  hint,
+  alert,
+  className = "",
+}) => (
+  <div className={`bg-surface border border-line rounded-card px-5 py-4 flex flex-col gap-1 ${className}`}>
+    <span className="text-[13px] leading-5 font-medium text-muted">{label}</span>
+    <span className={`text-[28px] leading-9 font-medium ${alert ? "text-bad" : ""}`}>{value}</span>
+    {hint}
+  </div>
+);
+
+const Legenda: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="text-xs text-muted">{children}</span>
+);
+
 export const KpiStrip: React.FC<KpiStripProps> = ({ metrics }) => {
-  const isHighVacuum = (metrics.semRespostaPct ?? 0) > SEM_RESPOSTA_ALERT_PCT;
-  const fmt = (v: number | null | undefined) => (v == null ? "N/D" : `${v.toFixed(1)}%`);
+  const alto = (metrics.semRespostaPct ?? 0) > SEM_RESPOSTA_ALERT_PCT;
+  const tmr = metrics.tmrMedioSegundos !== undefined ? fmtDuracao(metrics.tmrMedioSegundos) : metrics.tmrMedioFormatado || "—";
+  const ftr = metrics.ftrMedianaSegundos !== undefined ? fmtDuracao(metrics.ftrMedianaSegundos) : metrics.ftrMedianaFormatada || "—";
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-      {/* TMR Médio */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-        <div className="flex items-center justify-between text-slate-500 mb-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider">TMR Médio</span>
-          <Clock className="w-3.5 h-3.5 text-blue-500" />
-        </div>
-        <div className="text-xl font-bold text-slate-900">{metrics.tmrMedioFormatado || "N/D"}</div>
-        <div className="text-[11px] text-slate-400 mt-0.5">1ª resposta humana</div>
-      </div>
-
-      {/* FTR Mediana */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-        <div className="flex items-center justify-between text-slate-500 mb-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider">FTR Mediana</span>
-          <Zap className="w-3.5 h-3.5 text-amber-500" />
-        </div>
-        <div className="text-xl font-bold text-slate-900">{metrics.ftrMedianaFormatada || "N/D"}</div>
-        <div className="text-[11px] text-slate-400 mt-0.5">Tempo resolução</div>
-      </div>
-
-      {/* Resp. Cliente */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-        <div className="flex items-center justify-between text-slate-500 mb-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider">Resp. Cliente</span>
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-        </div>
-        <div className="text-xl font-bold text-slate-900">{fmt(metrics.respClientePct)}</div>
-        <div className="text-[11px] text-slate-400 mt-0.5">Respondidos loja</div>
-      </div>
-
-      {/* Sem Resposta */}
-      <div className={`p-3.5 rounded-xl border shadow-xs flex flex-col justify-between transition-colors ${
-        isHighVacuum
-          ? "bg-rose-50/50 border-rose-200"
-          : "bg-white border-slate-200/80 hover:border-slate-300"
-      }`}>
-        <div className="flex items-center justify-between text-slate-500 mb-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider">Sem Resposta</span>
-          <AlertTriangle className={`w-3.5 h-3.5 ${isHighVacuum ? "text-rose-500" : "text-slate-400"}`} />
-        </div>
-        <div className={`text-xl font-bold ${isHighVacuum ? "text-rose-600" : "text-slate-900"}`}>
-          {fmt(metrics.semRespostaPct)}
-        </div>
-        <div className="text-[11px] text-slate-400 mt-0.5">Cliente no vácuo</div>
-      </div>
-
-      {/* Fechamento CRM */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-        <div className="flex items-center justify-between text-slate-500 mb-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider">Fechamento</span>
-          <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
-        </div>
-        <div className="text-xl font-bold text-slate-900">
-          {metrics.taxaFechamentoPct !== null ? `${metrics.taxaFechamentoPct.toFixed(1)}%` : "N/D"}
-        </div>
-        <div className="text-[11px] text-slate-400 mt-0.5">Cards WON / Total</div>
-      </div>
-
-      {/* Reativação */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-        <div className="flex items-center justify-between text-slate-500 mb-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider">Reativação</span>
-          <RefreshCw className="w-3.5 h-3.5 text-cyan-500" />
-        </div>
-        <div className="text-xl font-bold text-slate-900">{fmt(metrics.reativacaoPct)}</div>
-        <div className="text-[11px] text-slate-400 mt-0.5">Retomada ≥ 24h</div>
-      </div>
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <Card label="Tempo da 1ª resposta" value={tmr} hint={<Legenda>Média até uma pessoa responder</Legenda>} />
+      <Card label="Tempo até resolver" value={ftr} hint={<Legenda>Tempo típico do início ao fim</Legenda>} />
+      <Card
+        label="Sem resposta"
+        value={fmtPct(metrics.semRespostaPct)}
+        alert={alto}
+        hint={
+          alto ? (
+            <span className="self-start inline-flex items-center h-5 px-2 rounded-full bg-bad-soft text-bad text-xs font-medium">
+              Acima do limite de {SEM_RESPOSTA_ALERT_PCT}%
+            </span>
+          ) : (
+            <Legenda>Clientes que não foram respondidos</Legenda>
+          )
+        }
+      />
+      <Card label="Taxa de fechamento" value={fmtPct(metrics.taxaFechamentoPct)} hint={<Legenda>Negócios ganhos no CRM</Legenda>} />
+      <Card
+        label="Conversas retomadas"
+        value={fmtPct(metrics.reativacaoPct)}
+        hint={<Legenda>Cliente voltou após 24h ou mais</Legenda>}
+        className="col-span-2 lg:col-span-1"
+      />
     </div>
   );
 };

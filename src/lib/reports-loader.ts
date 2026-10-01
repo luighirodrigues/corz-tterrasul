@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { prisma } from "@/db/prisma";
 import { resolveScopeTitle } from "@/domain/scope-title";
 import type { ReportItem, ScopeType } from "./types";
@@ -57,7 +58,8 @@ export async function loadReports(periodStart?: string): Promise<ReportItem[]> {
         scopeType: r.scopeType as ScopeType,
         scopeId: r.scopeId,
         periodStart: isoDay(r.periodStart),
-        periodEnd: isoDay(r.periodEnd),
+        // O fim da janela é 23:59 de São Paulo; em UTC já é o dia seguinte.
+        periodEnd: DateTime.fromJSDate(r.periodEnd, { zone: "America/Sao_Paulo" }).toISODate() as string,
         preliminar: r.preliminar,
         limitacoes: r.limitacoes,
         notaGeral: q?.notaGeral ?? null,

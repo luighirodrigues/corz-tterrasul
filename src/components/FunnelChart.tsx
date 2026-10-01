@@ -1,6 +1,6 @@
 import React from "react";
 import type { FunnelData } from "@/lib/types";
-import { Filter, ThumbsUp, ThumbsDown, Clock } from "lucide-react";
+import { fmtPct } from "@/lib/format";
 
 interface FunnelChartProps {
   funil?: FunnelData | null;
@@ -10,112 +10,87 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ funil }) => {
   if (!funil) return null;
 
   const total = funil.open + funil.won + funil.lost;
-  const wonPct = total > 0 ? ((funil.won / total) * 100).toFixed(1) : "0.0";
-  const lostPct = total > 0 ? ((funil.lost / total) * 100).toFixed(1) : "0.0";
-  const openPct = total > 0 ? ((funil.open / total) * 100).toFixed(1) : "0.0";
+  const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
 
-  const etapasEntries = Object.entries(funil.etapas || {});
-  const lostReasonsEntries = Object.entries(funil.lostReasons || {}).sort((a, b) => b[1] - a[1]);
+  const etapas = Object.entries(funil.etapas || {}).sort((a, b) => b[1] - a[1]);
+  const maxEtapa = Math.max(...etapas.map(([, c]) => c), 1);
+  const motivos = Object.entries(funil.lostReasons || {}).sort((a, b) => b[1] - a[1]);
+  const foraControle = funil.desconsideradas?.foraDoControle ?? 0;
+  const higiene = funil.desconsideradas?.higienizacao ?? 0;
+
+  const linhas = [
+    { label: "Ganhos", n: funil.won, cor: "bg-good-fill" },
+    { label: "Perdidos", n: funil.lost, cor: "bg-bad-fill" },
+    { label: "Em negociação", n: funil.open, cor: "bg-primary" },
+  ];
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 mb-6">
-      <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-3">
-        <div className="flex items-center gap-2">
-          <Filter className="w-5 h-5 text-blue-600" />
-          <h2 className="text-base font-bold text-slate-900">
-            Funil do Painel CRM & Desfechos
-          </h2>
-        </div>
-        <span className="text-xs text-slate-500 font-medium">
-          Total de <strong>{total}</strong> cards no período
-        </span>
+    <section className="bg-surface border border-line rounded-card p-6 flex flex-col gap-6">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-base font-medium">Negócios no CRM</h2>
+        <span className="text-[13px] text-muted">{total} {total === 1 ? "negócio" : "negócios"} na semana</span>
       </div>
 
-      {/* Cards Status Breakdown */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-100 flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider">Ganhos (WON)</div>
-            <div className="text-2xl font-bold text-emerald-950 mt-0.5">{funil.won}</div>
-            <div className="text-[11px] text-emerald-700">{wonPct}% conversão</div>
-          </div>
-          <ThumbsUp className="w-6 h-6 text-emerald-500 opacity-80" />
+      <div className="flex flex-col gap-3">
+        <div className="flex h-3 rounded-md overflow-hidden gap-0.5">
+          {linhas.map((l) => (
+            <div key={l.label} className={l.cor} style={{ width: `${pct(l.n)}%` }} />
+          ))}
         </div>
-
-        <div className="p-3.5 rounded-xl bg-rose-50/60 border border-rose-100 flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-rose-800 uppercase tracking-wider">Perdidos (LOST)</div>
-            <div className="text-2xl font-bold text-rose-950 mt-0.5">{funil.lost}</div>
-            <div className="text-[11px] text-rose-700">{lostPct}% perda</div>
-          </div>
-          <ThumbsDown className="w-6 h-6 text-rose-500 opacity-80" />
+        <div className="flex flex-col gap-2">
+          {linhas.map((l) => (
+            <div key={l.label} className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${l.cor}`} />
+                {l.label}
+              </span>
+              <span>
+                <strong className="font-medium">{l.n}</strong>
+                <span className="text-muted"> · {fmtPct(Number(pct(l.n).toFixed(1)))}</span>
+              </span>
+            </div>
+          ))}
         </div>
-
-        <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-100 flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold text-blue-800 uppercase tracking-wider">Em Aberto (OPEN)</div>
-            <div className="text-2xl font-bold text-blue-950 mt-0.5">{funil.open}</div>
-            <div className="text-[11px] text-blue-700">{openPct}% em negociação</div>
-          </div>
-          <Clock className="w-6 h-6 text-blue-500 opacity-80" />
-        </div>
+        {(foraControle > 0 || higiene > 0) && (
+          <p className="text-xs text-muted">
+            Não entram na taxa de fechamento: {foraControle} perdas fora do controle da equipe e {higiene} cadastros duplicados ou de quem já é cliente.
+          </p>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Etapas */}
-        <div>
-          <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-            Volume por Etapa do Pipeline
-          </div>
-          <div className="space-y-2.5">
-            {etapasEntries.length === 0 ? (
-              <div className="text-xs text-slate-400 italic">Nenhuma etapa com cards.</div>
-            ) : (
-              etapasEntries.map(([etapa, count]) => {
-                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-                return (
-                  <div key={etapa}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-medium text-slate-700">{etapa}</span>
-                      <span className="font-semibold text-slate-900">{count} cards ({pct}%)</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Motivos de Perda */}
-        <div>
-          <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-            Principais Motivos de Perda (LOST)
-          </div>
-          <div className="space-y-2">
-            {lostReasonsEntries.length === 0 ? (
-              <div className="text-xs text-slate-400 italic">Nenhum motivo de perda registrado.</div>
-            ) : (
-              lostReasonsEntries.map(([reason, count]) => (
-                <div
-                  key={reason}
-                  className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 text-xs"
-                >
-                  <span className="text-slate-700 font-medium">{reason}</span>
-                  <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
-                    {count} {count === 1 ? "card" : "cards"}
-                  </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-divider pt-5">
+        <div className="flex flex-col gap-3">
+          <span className="font-medium">Por etapa</span>
+          {etapas.length === 0 ? (
+            <span className="text-[13px] text-muted">Nenhuma etapa com negócios.</span>
+          ) : (
+            etapas.map(([etapa, count]) => (
+              <div key={etapa} className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-[13px]">
+                  <span>{etapa}</span>
+                  <span className="text-muted">{count}</span>
                 </div>
-              ))
-            )}
-          </div>
+                <div className="h-1.5 rounded-full bg-divider">
+                  <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(count / maxEtapa) * 100}%` }} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="flex flex-col gap-3">
+          <span className="font-medium">Motivos de perda</span>
+          {motivos.length === 0 ? (
+            <span className="text-[13px] text-muted">Nenhum motivo de perda registrado.</span>
+          ) : (
+            motivos.map(([motivo, count]) => (
+              <div key={motivo} className="flex justify-between text-[13px] border-b border-divider pb-2">
+                <span>{motivo}</span>
+                <span className="text-muted">{count}</span>
+              </div>
+            ))
+          )}
         </div>
       </div>
-    </div>
+    </section>
   );
 };

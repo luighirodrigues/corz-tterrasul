@@ -11,7 +11,9 @@ export interface CriteriaScores {
 export interface KpiMetrics {
   n: number;
   tmrMedioFormatado: string;
+  tmrMedioSegundos?: number | null;
   ftrMedianaFormatada: string;
+  ftrMedianaSegundos?: number | null;
   respClientePct: number | null;
   semRespostaPct: number | null;
   taxaFechamentoPct: number | null;
