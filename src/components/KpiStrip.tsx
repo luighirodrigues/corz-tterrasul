@@ -16,7 +16,7 @@ const Card: React.FC<{ label: string; value: string; hint?: React.ReactNode; ale
 }) => (
   <div className={`bg-surface border border-line rounded-card px-5 py-4 flex flex-col gap-1 ${className}`}>
     <span className="text-[13px] leading-5 font-medium text-muted">{label}</span>
-    <span className={`text-[28px] leading-9 font-medium ${alert ? "text-bad" : ""}`}>{value}</span>
+    <span className={`text-2xl sm:text-[28px] leading-9 font-medium ${alert ? "text-bad" : ""}`}>{value}</span>
     {hint}
   </div>
 );

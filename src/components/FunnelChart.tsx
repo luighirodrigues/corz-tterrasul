@@ -1,6 +1,6 @@
 import React from "react";
 import type { FunnelData } from "@/lib/types";
-import { fmtPct } from "@/lib/format";
+import { fmtInt, fmtPct, fmtQtd } from "@/lib/format";
 
 interface FunnelChartProps {
   funil?: FunnelData | null;
@@ -30,7 +30,7 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ funil, na = "na semana
     <section className="bg-surface border border-line rounded-card p-6 flex flex-col gap-6">
       <div className="flex flex-col gap-0.5">
         <h2 className="text-base font-medium">Negócios no CRM</h2>
-        <span className="text-[13px] text-muted">{total} {total === 1 ? "negócio" : "negócios"} {na}</span>
+        <span className="text-[13px] text-muted">{fmtQtd(total, "negócio", "negócios")} {na}</span>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -47,15 +47,15 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ funil, na = "na semana
                 {l.label}
               </span>
               <span>
-                <strong className="font-medium">{l.n}</strong>
-                <span className="text-muted"> · {fmtPct(Number(pct(l.n).toFixed(1)))}</span>
+                <strong className="font-medium">{fmtInt(l.n)}</strong>
+                <span className="text-muted">, {fmtPct(Number(pct(l.n).toFixed(1)))}</span>
               </span>
             </div>
           ))}
         </div>
         {(foraControle > 0 || higiene > 0) && (
           <p className="text-xs text-muted">
-            Não entram na taxa de fechamento: {foraControle} perdas fora do controle da equipe e {higiene} cadastros duplicados ou de quem já é cliente.
+            Não entram na taxa de fechamento: {fmtInt(foraControle)} perdas fora do controle da equipe e {fmtInt(higiene)} cadastros duplicados ou de quem já é cliente.
           </p>
         )}
       </div>
@@ -70,7 +70,7 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ funil, na = "na semana
               <div key={etapa} className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-[13px]">
                   <span>{etapa}</span>
-                  <span className="text-muted">{count}</span>
+                  <span className="text-muted">{fmtInt(count)}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-divider">
                   <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(count / maxEtapa) * 100}%` }} />
@@ -87,7 +87,7 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ funil, na = "na semana
             motivos.map(([motivo, count]) => (
               <div key={motivo} className="flex justify-between text-[13px] border-b border-divider pb-2">
                 <span>{motivo}</span>
-                <span className="text-muted">{count}</span>
+                <span className="text-muted">{fmtInt(count)}</span>
               </div>
             ))
           )}

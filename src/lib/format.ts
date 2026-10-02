@@ -13,6 +13,16 @@ export function fmtNota(n: number | null | undefined): string {
   return n == null ? "—" : n.toFixed(1).replace(".", ",");
 }
 
+/** Inteiro com separador de milhar: 2677 vira "2.677". */
+export function fmtInt(n: number): string {
+  return Math.round(n).toLocaleString("pt-BR");
+}
+
+/** "1 conversa" / "2 conversas", com milhar. */
+export function fmtQtd(n: number, singular: string, plural: string): string {
+  return `${fmtInt(n)} ${n === 1 ? singular : plural}`;
+}
+
 export function fmtPct(n: number | null | undefined): string {
   if (n == null) return "—";
   return `${Number(n.toFixed(1)).toString().replace(".", ",")}%`;
@@ -95,4 +105,33 @@ export function fmtTituloPeriodo(tipo: "semana" | "mes" | "livre", ini: string, 
 /** Momento do último sync, para "dados até ...": "hoje às 05:12" / "ontem às 05:12" / "02/10 às 05:12". */
 export function fmtDadosAte(iso: string, now: Date = new Date()): string {
   return fmtAtualizado(iso, now).replace(/^em /, "");
+}
+
+/** "29 de setembro" (ano só quando não é o corrente) a partir de ISO ou "YYYY-MM-DD". */
+export function fmtDia(s: string, now: Date = new Date()): string {
+  const d = toDay(s);
+  const ano = DateTime.fromJSDate(now, { zone: TZ }).year;
+  return `${d.day} de ${MESES[d.month - 1]}${d.year === ano ? "" : ` de ${d.year}`}`;
+}
+
+/** Forma curta para o botão de período no celular: "23–29 set." / "set. 2026" / "28 set.–3 out.". */
+export function fmtPeriodoMinimo(ini: string, fim: string): string {
+  const a = toDay(ini);
+  const b = toDay(fim);
+  if (a.month === b.month && a.year === b.year) return `${a.day}–${b.day} ${MESES_CURTOS[b.month - 1]}`;
+  return `${a.day} ${MESES_CURTOS[a.month - 1]}–${b.day} ${MESES_CURTOS[b.month - 1]}`;
+}
+
+/** "23 a 29 de set.", sem o ano: o botão do período no cabeçalho. */
+export function fmtPeriodoSemAno(ini: string, fim: string): string {
+  const a = toDay(ini);
+  const b = toDay(fim);
+  if (a.month === b.month && a.year === b.year) return `${a.day} a ${b.day} de ${MESES_CURTOS[b.month - 1]}`;
+  return `${a.day} de ${MESES_CURTOS[a.month - 1]} a ${b.day} de ${MESES_CURTOS[b.month - 1]}`;
+}
+
+/** "set. 2026": o mês no botão do período, no celular. */
+export function fmtMesMinimo(s: string): string {
+  const d = toDay(s);
+  return `${MESES_CURTOS[d.month - 1]} ${d.year}`;
 }

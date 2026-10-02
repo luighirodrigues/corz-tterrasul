@@ -118,7 +118,9 @@ export interface SessionDetail {
   equipe?: string | null;
   contactName: string;
   contactPhone: string;
-  panelName?: string;
+  /** Etapa do negócio no CRM; null quando a conversa não está ligada a nenhum negócio. */
+  panelName?: string | null;
+  /** ISO. */
   startAt: string | null;
   endAt: string | null;
   durationMinutes: number | null;
@@ -127,5 +129,19 @@ export interface SessionDetail {
   scores: CriteriaScores;
   resumo1Linha: string | null;
   evidencias?: Record<string, string>;
+  /** Vazio na lista; a janela da conversa busca as mensagens pelo id. */
   messages: MessageItem[];
+}
+
+export type FaixaConversas = "abaixo" | "meta" | "sem";
+export type OrdemConversas = "recentes" | "nota";
+
+/** Quantas conversas do período caem em cada filtro: a mesma conta para a lista, o resumo e o histograma. */
+export interface ContagensConversas {
+  todas: number;
+  /** Nota da conversa abaixo de 8,0. */
+  abaixo: number;
+  /** Nota da conversa de 8,0 ou mais, sem arredondar. */
+  naMeta: number;
+  semNota: number;
 }

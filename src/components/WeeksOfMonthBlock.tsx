@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { CalendarDays, ChevronRight } from "lucide-react";
-import { fmtDiaMes, fmtNota } from "@/lib/format";
+import { ChevronRight } from "lucide-react";
+import { fmtDiaMes, fmtNota, fmtQtd } from "@/lib/format";
 import { scoreStatus, TONE_DOT } from "@/lib/labels";
 
 interface Semana {
@@ -43,12 +43,9 @@ export const WeeksOfMonthBlock: React.FC<WeeksOfMonthBlockProps> = ({ mesInicio,
 
   return (
     <section className="bg-surface border border-line rounded-card p-6 flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <CalendarDays className="w-[22px] h-[22px] text-primary" strokeWidth={1.75} />
-        <div className="flex flex-col">
-          <h2 className="text-base font-medium">Semanas do mês</h2>
-          <span className="text-[13px] text-muted">A nota publicada de cada semana. Clique para abrir a semana.</span>
-        </div>
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-base font-medium">Semanas do mês</h2>
+        <span className="text-[13px] text-muted">A nota publicada de cada semana</span>
       </div>
       <div className="flex flex-col">
         {semanas.map((s) => {
@@ -61,8 +58,8 @@ export const WeeksOfMonthBlock: React.FC<WeeksOfMonthBlockProps> = ({ mesInicio,
               {s.publicada ? (
                 <>
                   <span className="text-[13px] text-muted whitespace-nowrap">
-                    {s.n} {s.n === 1 ? "conversa" : "conversas"}
-                    {s.preliminar ? " · amostra pequena" : ""}
+                    {fmtQtd(s.n, "conversa", "conversas")}
+                    {s.preliminar ? ", amostra pequena" : ""}
                   </span>
                   <span className="flex items-center justify-end gap-2 w-16 text-base font-medium">
                     <span className={`w-2 h-2 rounded-full ${TONE_DOT[tone]}`} />
@@ -80,7 +77,7 @@ export const WeeksOfMonthBlock: React.FC<WeeksOfMonthBlockProps> = ({ mesInicio,
               key={s.periodStart}
               type="button"
               onClick={() => onOpenWeek(s.periodStart)}
-              className="w-full text-left flex items-center gap-4 min-h-12 px-3 -mx-3 border-b border-divider last:border-b-0 hover:bg-page rounded-lg"
+              className="w-full text-left flex items-center gap-4 min-h-12 px-3 -mx-3 border-b border-divider last:border-b-0 hover:bg-page rounded-lg focus-visible:outline-2 outline-primary"
             >
               {conteudo}
             </button>

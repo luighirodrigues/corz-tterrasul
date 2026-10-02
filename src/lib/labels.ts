@@ -4,9 +4,22 @@ export type Tone = "good" | "warn" | "bad" | "neutral";
 export function scoreStatus(n: number | null | undefined): { label: string; tone: Tone } {
   if (n == null) return { label: "Sem avaliação", tone: "neutral" };
   if (n >= 8) return { label: "Na meta", tone: "good" };
-  if (n >= 6) return { label: "Atenção", tone: "warn" };
-  return { label: "Abaixo da meta", tone: "bad" };
+  if (n >= 6) return { label: "Abaixo da meta", tone: "warn" };
+  return { label: "Muito abaixo da meta", tone: "bad" };
 }
+
+/** Marcadores do anonimizador (`anonymizer.ts`) e como aparecem para o gestor. */
+export const MARCADORES: Record<string, string> = {
+  cliente: "cliente",
+  fone: "telefone",
+  email: "e-mail",
+  cpf: "CPF",
+  cnpj: "CNPJ",
+};
+
+/** Troca "{{cliente}}" e afins por palavras, em texto puro (para title e aria-label). */
+export const textoAnonimo = (s: string): string =>
+  s.replace(/\{\{(\w+)\}\}/g, (all, k: string) => MARCADORES[k] ?? all);
 
 export const TONE_CHIP: Record<Tone, string> = {
   good: "bg-good-soft text-good",

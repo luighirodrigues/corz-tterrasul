@@ -287,7 +287,8 @@ export async function computeScope(
     };
   }
 
-  // Limitações declaradas (nunca escondidas)
+  // Limitações declaradas (nunca escondidas).
+  // A tela traduz cada frase em src/lib/observacoes.ts: quem criar uma frase nova precisa traduzi-la lá.
   const limitacoes: string[] = [];
   if (preliminar) {
     limitacoes.push(`Amostra preliminar: ${qualidade.nComNota} conversas com nota (mínimo 10).`);

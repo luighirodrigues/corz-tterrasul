@@ -29,12 +29,14 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({ score, size = 176 }) => {
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           transform="rotate(-90 80 80)"
-          className="transition-all duration-700 ease-out"
+          className="transition-all duration-700 ease-out motion-reduce:transition-none"
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[44px] leading-[52px] font-medium">{fmtNota(score)}</span>
-        <span className="text-[13px] text-muted">de 10</span>
+        <span className="font-medium" style={{ fontSize: size * 0.25, lineHeight: 1.1 }}>
+          {fmtNota(score)}
+        </span>
+        {size >= 140 && <span className="text-[13px] text-muted">de 10</span>}
       </div>
     </div>
   );

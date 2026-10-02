@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   fmtAtualizado,
   fmtDadosAte,
+  fmtDia,
   fmtDuracao,
+  fmtInt,
   fmtMes,
   fmtMesCurto,
   fmtNomeMes,
@@ -11,9 +13,11 @@ import {
   fmtPeriodo,
   fmtPeriodoComAno,
   fmtPeriodoCurto,
+  fmtPeriodoMinimo,
+  fmtQtd,
   fmtTituloPeriodo,
 } from "../src/lib/format.js";
-import { scoreStatus } from "../src/lib/labels.js";
+import { scoreStatus, textoAnonimo } from "../src/lib/labels.js";
 
 describe("format", () => {
   it("fmtNota", () => {
@@ -53,9 +57,36 @@ describe("format", () => {
 
   it("scoreStatus", () => {
     expect(scoreStatus(8).tone).toBe("good");
+    expect(scoreStatus(8).label).toBe("Na meta");
     expect(scoreStatus(7.9).tone).toBe("warn");
+    expect(scoreStatus(7.9).label).toBe("Abaixo da meta");
+    expect(scoreStatus(6).label).toBe("Abaixo da meta");
     expect(scoreStatus(5.9).tone).toBe("bad");
+    expect(scoreStatus(5.9).label).toBe("Muito abaixo da meta");
     expect(scoreStatus(null).tone).toBe("neutral");
+  });
+
+  it("fmtInt e fmtQtd", () => {
+    expect(fmtInt(2677)).toBe("2.677");
+    expect(fmtInt(12)).toBe("12");
+    expect(fmtQtd(1, "conversa", "conversas")).toBe("1 conversa");
+    expect(fmtQtd(2677, "conversa", "conversas")).toBe("2.677 conversas");
+  });
+
+  it("fmtDia omite o ano corrente", () => {
+    const now = new Date("2026-10-02T12:00:00Z");
+    expect(fmtDia("2026-09-29T15:00:00.000Z", now)).toBe("29 de setembro");
+    expect(fmtDia("2025-12-30T15:00:00.000Z", now)).toBe("30 de dezembro de 2025");
+  });
+
+  it("fmtPeriodoMinimo", () => {
+    expect(fmtPeriodoMinimo("2026-09-23", "2026-09-29")).toBe("23–29 set.");
+    expect(fmtPeriodoMinimo("2026-09-28", "2026-10-04")).toBe("28 set.–4 out.");
+  });
+
+  it("textoAnonimo troca os marcadores por palavras", () => {
+    expect(textoAnonimo("{{cliente}} ligou do {{fone}} e mandou {{email}}")).toBe("cliente ligou do telefone e mandou e-mail");
+    expect(textoAnonimo("CPF {{cpf}}, CNPJ {{cnpj}}")).toBe("CPF CPF, CNPJ CNPJ");
   });
 });
 

@@ -19,13 +19,8 @@ interface TrendChartProps {
 /** Um ponto por semana (ou por mês), com o valor oficial publicado. */
 export const TrendChart: React.FC<TrendChartProps> = ({ points, highlightStart, unidade = "semana" }) => {
   const mensal = unidade === "mes";
-  if (points.length < 2) {
-    return (
-      <p className="text-[13px] text-muted">
-        {mensal ? "O gráfico aparece a partir do 2º mês publicado." : "O gráfico aparece a partir da 2ª semana publicada."}
-      </p>
-    );
-  }
+  // Com menos de 2 pontos não há evolução para mostrar.
+  if (points.length < 2) return null;
 
   const W = 320;
   const H = 110;

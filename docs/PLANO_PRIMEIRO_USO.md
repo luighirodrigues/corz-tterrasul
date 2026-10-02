@@ -5,8 +5,8 @@
 
 **Origem:** revisão das telas em 02/10/2026, com o app rodando com os dados da semana de 23 a 29/09, em 1280px e 390px.
 
-**Status:** decisões da §2 confirmadas em 02/10/2026, todas como recomendadas. **Nada implementado:** a implementação
-espera liberação.
+**Status:** decisões da §2 confirmadas em 02/10/2026, todas como recomendadas. **Implementado** na branch
+`primeiro-uso` (U1 a U16), ainda sem merge na `main`. Desvios do plano: ver §7.
 
 **Ordem:** a parte A (U1 a U8) corrige o que o gestor percebe no primeiro minuto. A parte B (U9 a U13) encurta o
 caminho e a parte C (U14 e U15) tira o que parece tela gerada. U16 é a verificação. Cada etapa termina com `pnpm test`
@@ -407,3 +407,21 @@ Sem nota na semana
 - Vocabulário do relatório HTML estático.
 - Histograma sem arredondar: mudaria o `aggregate.ts` e os relatórios publicados.
 - Exportar PDF.
+
+---
+
+## 7. O que ficou diferente do plano
+
+- **Escopo nas contagens (U4, U9, U10).** A API de conversas aceita também `scopeType` e `scopeId` (o escopo do
+  relatório: geral, divisão, equipe, painel ou atendente), além do `agente` do plano. Sem isso, o resumo de uma equipe
+  ou de um painel mostraria a contagem da operação inteira. "Ver essas conversas" leva à aba Conversas já filtrada por
+  esse escopo, com um chip para tirar o filtro.
+- **Janela da conversa (U10).** A lista não traz mais as mensagens. A janela abre na hora com o que a lista já tem e
+  busca a conversa inteira por `?id=` (`loadSessionById`, que usa a análise da versão atual e, na falta dela, a mais
+  recente, para as conversas em destaque de relatórios antigos).
+- **"Atualizado…" (U-D6).** Está no rodapé do menu de período. Não entrou no subtítulo dos períodos publicados, porque
+  o horário do último sync não diz nada sobre um relatório publicado; no período personalizado continua no subtítulo
+  ("Calculado agora, com dados até…").
+- **Verificação (U16).** `scratch/telas.mjs` gera os prints em `scratch/telas/` (fora do git) e confere os termos
+  proibidos e a rolagem horizontal. Na semana de 23/09: cabeçalho fixo de 105px em 390px e 113px em 1280px;
+  contagens 255, 138, 103 e 14 iguais no resumo, no histograma e nos filtros.

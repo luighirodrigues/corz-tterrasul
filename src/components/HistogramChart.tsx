@@ -1,26 +1,26 @@
 import React from "react";
+import { fmtInt, fmtQtd } from "@/lib/format";
 
 interface HistogramChartProps {
   histogram: number[];
+  /** Conversas com nota 8,0 ou mais, sem arredondar (a conta da API de conversas). Null enquanto carrega. */
+  naMeta: number | null;
 }
 
-export const HistogramChart: React.FC<HistogramChartProps> = ({ histogram }) => {
+export const HistogramChart: React.FC<HistogramChartProps> = ({ histogram, naMeta }) => {
   const max = Math.max(...histogram, 1);
   const total = histogram.reduce((a, b) => a + b, 0);
-  const naMeta = histogram.slice(8).reduce((a, b) => a + b, 0);
 
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-sm font-medium">Distribuição das notas</span>
-
       <div className="flex items-end gap-1.5 h-28">
         {histogram.map((count, nota) => (
           <div
             key={nota}
             className="flex-1 h-full flex flex-col justify-end items-center gap-1"
-            title={`Nota ${nota}: ${count} ${count === 1 ? "conversa" : "conversas"}`}
+            title={`Nota ${nota}: ${fmtQtd(count, "conversa", "conversas")}`}
           >
-            <span className="text-[11px] leading-3 text-muted">{count}</span>
+            <span className="text-[11px] leading-3 text-muted">{fmtInt(count)}</span>
             <div
               className={`w-full rounded-t ${nota >= 8 ? "bg-primary" : "bg-primary-faint"}`}
               style={{ height: `${Math.max(Math.round((count / max) * 86), count > 0 ? 4 : 1)}%` }}
@@ -45,10 +45,11 @@ export const HistogramChart: React.FC<HistogramChartProps> = ({ histogram }) => 
           <span className="w-2.5 h-2.5 rounded-sm bg-primary-faint" />
           Abaixo da meta
         </span>
+        <span>Nota arredondada</span>
       </div>
-      {total > 0 && (
+      {total > 0 && naMeta != null && (
         <span className="text-[13px] text-muted">
-          {naMeta} de {total} conversas atingiram a meta
+          {fmtInt(naMeta)} de {fmtQtd(total, "conversa", "conversas")} {naMeta === 1 ? "atingiu" : "atingiram"} a meta
         </span>
       )}
     </div>
