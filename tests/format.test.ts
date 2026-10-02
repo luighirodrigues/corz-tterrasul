@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { fmtNota, fmtPct, fmtDuracao, fmtPeriodo, fmtPeriodoCurto, fmtAtualizado } from "../src/lib/format.js";
+import {
+  fmtAtualizado,
+  fmtDadosAte,
+  fmtDuracao,
+  fmtMes,
+  fmtMesCurto,
+  fmtNomeMes,
+  fmtNota,
+  fmtPct,
+  fmtPeriodo,
+  fmtPeriodoComAno,
+  fmtPeriodoCurto,
+  fmtTituloPeriodo,
+} from "../src/lib/format.js";
 import { scoreStatus } from "../src/lib/labels.js";
 
 describe("format", () => {
@@ -43,5 +56,34 @@ describe("format", () => {
     expect(scoreStatus(7.9).tone).toBe("warn");
     expect(scoreStatus(5.9).tone).toBe("bad");
     expect(scoreStatus(null).tone).toBe("neutral");
+  });
+});
+
+describe("format: mês e período livre", () => {
+  it("fmtMes e afins não deslocam o dia por fuso", () => {
+    expect(fmtMes("2026-09-01")).toBe("setembro de 2026");
+    expect(fmtMes("2026-09-01T03:00:00.000Z")).toBe("setembro de 2026");
+    expect(fmtNomeMes("2026-08-01")).toBe("agosto");
+    expect(fmtMesCurto("2026-09-01")).toBe("set");
+    expect(fmtMesCurto("2026-10-01T03:00:00.000Z")).toBe("out");
+  });
+
+  it("fmtPeriodoComAno sempre mostra o ano", () => {
+    expect(fmtPeriodoComAno("2026-09-05", "2026-09-10")).toBe("5 a 10 de setembro de 2026");
+    expect(fmtPeriodoComAno("2026-09-29", "2026-10-05")).toBe("29 de setembro a 5 de outubro de 2026");
+    expect(fmtPeriodoComAno("2025-12-30", "2026-01-05")).toBe("30 de dezembro de 2025 a 5 de janeiro de 2026");
+  });
+
+  it("fmtTituloPeriodo por tipo", () => {
+    expect(fmtTituloPeriodo("semana", "2026-09-16", "2026-09-22")).toBe("Semana de 16 a 22 de setembro");
+    expect(fmtTituloPeriodo("mes", "2026-09-01", "2026-09-30")).toBe("Mês de setembro de 2026");
+    expect(fmtTituloPeriodo("livre", "2026-09-05", "2026-09-10")).toBe("Período de 5 a 10 de setembro de 2026");
+  });
+
+  it("fmtDadosAte", () => {
+    const now = new Date("2026-10-02T15:00:00Z");
+    expect(fmtDadosAte("2026-10-02T08:12:00Z", now)).toBe("hoje às 05:12");
+    expect(fmtDadosAte("2026-10-01T08:12:00Z", now)).toBe("ontem às 05:12");
+    expect(fmtDadosAte("2026-09-28T08:12:00Z", now)).toBe("28/09 às 05:12");
   });
 });

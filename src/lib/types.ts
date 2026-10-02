@@ -1,5 +1,10 @@
 export type ScopeType = "geral" | "divisao" | "equipe" | "painel" | "agente";
 
+/** semana e mês são relatórios publicados; livre é calculado na hora, para um intervalo qualquer. */
+export type Granularidade = "semana" | "mes" | "livre";
+/** Tipos de período que têm relatório publicado (lista de períodos, histórico). */
+export type TipoPublicado = Exclude<Granularidade, "livre">;
+
 export interface CriteriaScores {
   atrito: number | null;
   solucao: number | null;
@@ -49,8 +54,21 @@ export interface Comparativo {
   nAnterior: number;
 }
 
+export interface Destaque {
+  sessionExternalId: string;
+  nota: number;
+  resumo: string;
+  agentName: string | null;
+}
+
+export interface Destaques {
+  melhores: Destaque[];
+  piores: Destaque[];
+}
+
 export interface ReportItem {
   id: string;
+  granularity: Granularidade;
   title: string;
   slug: string;
   scopeType: ScopeType;
@@ -74,6 +92,14 @@ export interface ReportItem {
   comparativo?: Comparativo | null;
   correctedAt?: string | null;
   correctionReason?: string | null;
+  /** Só período livre: calculado agora, sem texto da IA. */
+  calculadoAgora?: boolean;
+  /** Só período livre: quando o último sync terminou (ISO). */
+  dadosAte?: string | null;
+  /** Só período livre: conversas encerradas no período que ainda não foram avaliadas. */
+  semAvaliacao?: number;
+  /** Só período livre: as 3 melhores e as 3 piores conversas. */
+  destaques?: Destaques;
 }
 
 export interface MessageItem {

@@ -57,11 +57,75 @@ export const nomeEscopo = (title: string): string =>
 
 export const MSG = {
   erroDados: "Não foi possível carregar os dados agora. Tente novamente em alguns minutos.",
-  semRelatorio: "Ainda não há resultados publicados para esta semana.",
-  semAnalise: "A análise desta semana ainda não está disponível.",
   carregando: "Carregando…",
   amostraPequena: "Amostra pequena: menos de 10 conversas avaliadas. Leia os números como uma indicação inicial.",
 };
+
+export type TipoPeriodo = "semana" | "mes" | "livre";
+
+/** Textos que mudam com o tipo de período (semana, mês ou intervalo escolhido). */
+export const PERIODO: Record<
+  TipoPeriodo,
+  {
+    /** "semana", "mês", "período" */
+    nome: string;
+    /** Rótulo da lista de períodos no cabeçalho. */
+    maisRecente: string;
+    nota: string;
+    na: string;
+    nesta: string;
+    avaliadasNo: string;
+    evolucao: string;
+    analise: string;
+    semRelatorio: string;
+    semAnalise: string;
+    nenhumaConversa: string;
+  }
+> = {
+  semana: {
+    nome: "semana",
+    maisRecente: "Semana mais recente",
+    nota: "Nota da semana",
+    na: "na semana",
+    nesta: "nesta semana",
+    avaliadasNo: "avaliadas na semana",
+    evolucao: "Evolução semanal",
+    analise: "Análise da semana",
+    semRelatorio: "Ainda não há resultados publicados para esta semana.",
+    semAnalise: "A análise desta semana ainda não está disponível.",
+    nenhumaConversa: "Nenhuma conversa avaliada nesta semana.",
+  },
+  mes: {
+    nome: "mês",
+    maisRecente: "Mês mais recente",
+    nota: "Nota do mês",
+    na: "no mês",
+    nesta: "neste mês",
+    avaliadasNo: "avaliadas no mês",
+    evolucao: "Evolução mensal",
+    analise: "Análise do mês",
+    semRelatorio: "Ainda não há resultados publicados para nenhum mês.",
+    semAnalise: "A análise deste mês ainda não está disponível.",
+    nenhumaConversa: "Nenhuma conversa avaliada neste mês.",
+  },
+  livre: {
+    nome: "período",
+    maisRecente: "",
+    nota: "Nota do período",
+    na: "no período",
+    nesta: "neste período",
+    avaliadasNo: "avaliadas no período",
+    evolucao: "Evolução semanal",
+    analise: "Análise do período",
+    semRelatorio: "Não há dados para este período.",
+    semAnalise: "",
+    nenhumaConversa: "Nenhuma conversa avaliada neste período.",
+  },
+};
+
+/** "em relação à semana anterior" / "em relação a agosto" (mês). */
+export const emRelacaoA = (tipo: TipoPeriodo, mesAnterior?: string) =>
+  tipo === "mes" ? `em relação a ${mesAnterior ?? "o mês anterior"}` : "em relação à semana anterior";
 
 export const conversasAvaliadas = (n: number) =>
   n === 0 ? "Nenhuma conversa avaliada" : n === 1 ? "1 conversa avaliada" : `${n} conversas avaliadas`;

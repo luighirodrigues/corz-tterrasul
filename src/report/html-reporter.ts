@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { DateTime } from "luxon";
 import type { PeriodReport } from "../generated/client/index.js";
 import { SEM_RESPOSTA_ALERT_PCT } from "../lib/thresholds.js";
 
@@ -12,7 +13,16 @@ export function escapeHtml(value: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+/** "setembro de 2026" a partir do início da janela mensal (fuso de São Paulo, o do tenant). */
+function nomeDoMes(start: Date): string {
+  const d = DateTime.fromJSDate(new Date(start), { zone: "America/Sao_Paulo" });
+  return `${MESES[d.month - 1]} de ${d.year}`;
+}
+
 export function generateReportHtml(report: PeriodReport, scopeTitle: string): string {
+  const isMonth = report.granularity === "mes";
   const sinteticos = report.sinteticos as any;
   const qualidade = report.qualidade as any;
   const funil = report.funil as any;
@@ -28,6 +38,9 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
   // Formatar datas do período
   const startStr = new Date(report.periodStart).toLocaleDateString("pt-BR");
   const endStr = new Date(report.periodEnd).toLocaleDateString("pt-BR");
+  const periodoTitulo = isMonth
+    ? `Mês de <strong>${nomeDoMes(report.periodStart)}</strong>`
+    : `Período de Análise: <strong>${startStr}</strong> até <strong>${endStr}</strong>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -240,7 +253,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
     <header>
       <div>
         <h1>${escapeHtml(scopeTitle)}</h1>
-        <div class="period-badge">Período de Análise: <strong>${startStr}</strong> até <strong>${endStr}</strong></div>
+        <div class="period-badge">${periodoTitulo}</div>
       </div>
       <div>
         <span style="font-size: 12px; color: var(--text-muted);">Padrão Pry / FLW Quality v1</span>
@@ -320,7 +333,7 @@ export function generateReportHtml(report: PeriodReport, scopeTitle: string): st
           </div>
           ${
               report.comparativo && (report.comparativo as any).deltaNota != null
-                ? `<div style="margin-top:6px;font-size:12px;font-weight:600;color:${(report.comparativo as any).deltaNota > 0 ? "var(--success)" : (report.comparativo as any).deltaNota < 0 ? "var(--danger)" : "var(--text-muted)"}" title="Semana anterior recalculada na régua atual">${(report.comparativo as any).deltaNota > 0 ? "▲ +" : (report.comparativo as any).deltaNota < 0 ? "▼ " : "• "}${(report.comparativo as any).deltaNota.toFixed(1)} vs semana anterior</div>`
+                ? `<div style="margin-top:6px;font-size:12px;font-weight:600;color:${(report.comparativo as any).deltaNota > 0 ? "var(--success)" : (report.comparativo as any).deltaNota < 0 ? "var(--danger)" : "var(--text-muted)"}" title="${isMonth ? "Mês" : "Semana"} anterior recalculado${isMonth ? "" : "a"} na régua atual">${(report.comparativo as any).deltaNota > 0 ? "▲ +" : (report.comparativo as any).deltaNota < 0 ? "▼ " : "• "}${(report.comparativo as any).deltaNota.toFixed(1)} vs ${isMonth ? "mês" : "semana"} anterior</div>`
                 : ""
             }
           <div class="ring-footer">
@@ -511,7 +524,10 @@ export async function exportReportHtml(
   customFileName?: string
 ): Promise<string> {
   const html = generateReportHtml(report, scopeTitle);
-  const dateStr = report.periodStart.toISOString().split("T")[0];
+  const dateStr =
+    report.granularity === "mes"
+      ? DateTime.fromJSDate(report.periodStart, { zone: "America/Sao_Paulo" }).toFormat("yyyy-MM")
+      : report.periodStart.toISOString().split("T")[0];
   const fileName = customFileName || `relatorio_${report.scopeType}_${report.scopeId}_${dateStr}.html`;
   const filePath = path.join(outputDir, fileName);
 

@@ -14,6 +14,9 @@ export interface AnalysisRow {
   scores: Record<Criterion, number | null>;
   resumo?: string | null;
   evidencias?: Record<string, string> | null;
+  /** Só para as telas ("conversas em destaque"): nunca vai para a IA (`pickCases` não copia estes campos). */
+  sessionExternalId?: string;
+  agentName?: string | null;
 }
 
 export interface Counts {
@@ -151,3 +154,36 @@ export function pickCases(rows: AnalysisRow[], available: readonly Criterion[], 
     evidencias: x.r.evidencias ?? {},
   }));
 }
+
+export interface Highlight {
+  sessionExternalId: string;
+  nota: number;
+  resumo: string;
+  agentName: string | null;
+}
+
+/** As `n` conversas de maior e as `n` de menor nota (com resumo e id), para a tela de período livre. */
+export function pickHighlights(
+  rows: AnalysisRow[],
+  available: readonly Criterion[],
+  n = 3
+): { melhores: Highlight[]; piores: Highlight[] } {
+  const scored = rows
+    .map((r) => ({ r, nota: conversationScore(r, available) }))
+    .filter((x): x is { r: AnalysisRow & { sessionExternalId: string }; nota: number } =>
+      x.nota != null && !!x.r.resumo && !!x.r.sessionExternalId
+    )
+    // Empate de nota: ordem estável pelo id, para o mesmo período dar sempre os mesmos destaques.
+    .sort((a, b) => a.nota - b.nota || a.r.sessionExternalId.localeCompare(b.r.sessionExternalId));
+  const toHighlight = (x: (typeof scored)[number]): Highlight => ({
+    sessionExternalId: x.r.sessionExternalId,
+    nota: Number(x.nota.toFixed(1)),
+    resumo: x.r.resumo ?? "",
+    agentName: x.r.agentName ?? null,
+  });
+  const piores = scored.slice(0, n);
+  // Poucas conversas: uma conversa não aparece nas duas listas.
+  const melhores = scored.slice(piores.length).slice(-n).reverse();
+  return { melhores: melhores.map(toHighlight), piores: piores.map(toHighlight) };
+}
+

@@ -5,6 +5,7 @@ import type { FlwMessageDTO, FlwSessionDTO } from "../flw/flw-types.js";
 import { ensureTenant } from "../domain/tenant.js";
 import { getSyncCursor, resolveSyncWindow } from "../domain/sync-window.js";
 import { assignTeamGroups, parseIgnoredTeams, parseTeamGroups } from "../domain/teams.js";
+import { runJobMetrics } from "./job-metrics.js";
 
 export interface SyncSessionsOptions {
   tenantId?: string;
@@ -249,7 +250,7 @@ export async function runJobASyncSessions(options: SyncSessionsOptions = {}): Pr
 
           const record = await prisma.session.upsert({
             where: { tenantId_externalId: { tenantId, externalId: item.id } },
-            update: data,
+            update: { ...data, metricsStale: true },
             create: { tenantId, externalId: item.id, ...data },
           });
 
@@ -272,6 +273,7 @@ export async function runJobASyncSessions(options: SyncSessionsOptions = {}): Pr
                 messagesSyncedAt: new Date(),
                 messagesSyncedFlwUpdatedAt: flwUpdated ?? new Date(),
                 messagesPending: r.audioProcessing,
+                metricsStale: true, // as mensagens mudaram: TMR, sem resposta e reativação precisam ser refeitos
               },
             });
           }
@@ -306,6 +308,14 @@ export async function runJobASyncSessions(options: SyncSessionsOptions = {}): Pr
     console.log(
       `[Job A] Concluído: ${totalSuccess} sessões (${totalFailed} falhas); mensagens baixadas para ${messagesFetched} sessões.`
     );
+
+    // Indicadores por conversa: refeitos só para o que o sync acabou de mexer.
+    try {
+      await runJobMetrics({ tenantId });
+    } catch (metricsError: any) {
+      // O sync já está salvo. As conversas seguem marcadas e o Job E refaz o que faltar antes de publicar.
+      console.warn(`[Job A] Aviso: cálculo dos indicadores falhou (${metricsError.message}); será refeito na próxima rodada.`);
+    }
   } catch (fatalError: any) {
     console.error("[Job A] Erro fatal:", fatalError);
     await prisma.syncJob.update({

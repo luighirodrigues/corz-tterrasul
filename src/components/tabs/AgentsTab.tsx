@@ -2,17 +2,19 @@ import React from "react";
 import { ChevronRight, Info } from "lucide-react";
 import type { ReportItem } from "@/lib/types";
 import { SEM_RESPOSTA_ALERT_PCT } from "@/lib/thresholds";
-import { fmtDuracao, fmtNota, fmtPct, fmtPeriodo } from "@/lib/format";
-import { conversasAvaliadas, nomeEscopo, scoreStatus, TONE_CHIP } from "@/lib/labels";
+import { fmtDuracao, fmtNota, fmtPct, fmtTituloPeriodo } from "@/lib/format";
+import { conversasAvaliadas, nomeEscopo, PERIODO, scoreStatus, TONE_CHIP, type TipoPeriodo } from "@/lib/labels";
 
 interface AgentsTabProps {
   agents: ReportItem[];
+  tipo: TipoPeriodo;
   periodStart?: string;
   periodEnd?: string;
   onOpen: (id: string) => void;
 }
 
-export const AgentsTab: React.FC<AgentsTabProps> = ({ agents, periodStart, periodEnd, onOpen }) => {
+export const AgentsTab: React.FC<AgentsTabProps> = ({ agents, tipo, periodStart, periodEnd, onOpen }) => {
+  const t = PERIODO[tipo];
   const sorted = [...agents].sort((a, b) => (b.notaGeral ?? -1) - (a.notaGeral ?? -1));
 
   return (
@@ -21,12 +23,12 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({ agents, periodStart, perio
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl leading-8 font-medium">Atendentes</h1>
           <span className="text-muted">
-            {periodStart && periodEnd ? `Semana de ${fmtPeriodo(periodStart, periodEnd)} · ` : ""}ordenados pela nota da semana
+            {periodStart && periodEnd ? `${fmtTituloPeriodo(tipo, periodStart, periodEnd)} · ` : ""}ordenados pela {t.nota.toLowerCase()}
           </span>
         </div>
         <span className="inline-flex items-center gap-1.5 text-xs text-muted">
           <Info className="w-4 h-4" strokeWidth={1.75} />
-          Amostra pequena = menos de 10 conversas avaliadas na semana
+          Amostra pequena = menos de 10 conversas avaliadas {t.na}
         </span>
       </div>
 

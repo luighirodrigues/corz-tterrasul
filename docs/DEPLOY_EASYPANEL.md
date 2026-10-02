@@ -49,7 +49,12 @@ pnpm job:report -- --week 2026-09-17 --dry-run     # rascunho, não grava
 pnpm job:report -- --week 2026-09-17               # publica a janela (exige a trava do §16)
 pnpm daily                                          # sync incremental + IA estágio 1
 pnpm publish:weekly                                 # publica a última janela encerrada
+pnpm publish:monthly                                # publica o último mês encerrado (dia 2 de cada mês, depois do daily)
+pnpm job:report -- --month 2026-09 --dry-run        # rascunho do mês, não grava
+pnpm job:metrics                                    # recalcula os indicadores gravados em cada conversa (--all refaz todas)
 ```
+
+Agende `pnpm publish:monthly` no **dia 2 de cada mês**, depois do `daily`. Ele publica o mês do calendário que acabou de encerrar; o mês que começa antes do `GO_LIVE_AT` sai marcado como parcial.
 
 Só um job roda por vez (lock no Postgres): se outro estiver em andamento, o comando avisa e sai.
 
@@ -64,3 +69,11 @@ Os HTMLs gerados ficam em `reports/` dentro do container (somem se o container f
 ## 5. Atualizar um banco que já existe
 
 O container roda `prisma migrate deploy` toda vez que sobe, então migrações novas entram sozinhas no deploy. **Se a migração falhar, a tela não sobe**: faça backup antes e não faça deploy com job rodando (o redeploy mata o job aberto no terminal). O passo a passo da migração `2_equipes` (backup, conferência, sync, semanas passadas e reversão) está em `docs/PLANO_EQUIPES.md`, seção E9.
+
+### Migração `3_periodos` (relatório mensal e período livre)
+
+1. Backup (`pg_dump -Fc`) e `pnpm prisma migrate status`; deploy sem job rodando (a migração entra sozinha no `CMD`).
+2. **Backfill dos indicadores por conversa:** `pnpm job:metrics`. Até terminar, as conversas ficam marcadas (`metrics_stale`) e os indicadores de tempo dos relatórios novos ficam incompletos. Confira: `SELECT count(*) FROM sessions WHERE metrics_stale;` deve dar 0.
+3. Meses passados, do mais antigo ao mais novo: `pnpm job:report -- --month AAAA-MM` (o primeiro sai parcial). Custo: ~20 chamadas da IA por mês.
+4. Agendar `pnpm publish:monthly` (dia 2).
+5. Reversão: o código antigo ignora as colunas novas, mas lê os relatórios mensais como se fossem semanas. **Antes de voltar o código:** `DELETE FROM period_reports WHERE granularity = 'mes';` (o `down.sql` da migração tem os comandos).

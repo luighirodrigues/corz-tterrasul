@@ -4,9 +4,11 @@ import { fmtPct } from "@/lib/format";
 
 interface FunnelChartProps {
   funil?: FunnelData | null;
+  /** "na semana", "no mês" ou "no período". */
+  na?: string;
 }
 
-export const FunnelChart: React.FC<FunnelChartProps> = ({ funil }) => {
+export const FunnelChart: React.FC<FunnelChartProps> = ({ funil, na = "na semana" }) => {
   if (!funil) return null;
 
   const total = funil.open + funil.won + funil.lost;
@@ -28,7 +30,7 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ funil }) => {
     <section className="bg-surface border border-line rounded-card p-6 flex flex-col gap-6">
       <div className="flex flex-col gap-0.5">
         <h2 className="text-base font-medium">Negócios no CRM</h2>
-        <span className="text-[13px] text-muted">{total} {total === 1 ? "negócio" : "negócios"} na semana</span>
+        <span className="text-[13px] text-muted">{total} {total === 1 ? "negócio" : "negócios"} {na}</span>
       </div>
 
       <div className="flex flex-col gap-3">

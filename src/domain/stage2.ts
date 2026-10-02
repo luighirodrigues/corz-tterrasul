@@ -2,6 +2,10 @@ import { anonymizeText } from "../utils/anonymizer.js";
 import { CRITERIA, CRITERION_LABEL, type Criterion, type Qualidade, type SampleCase } from "./aggregate.js";
 
 export const STAGE2_PROMPT_VERSION = "stage2-v2";
+/** Texto do relatório MENSAL: mais casos e, como contexto, os pontos já publicados nas semanas do mês. */
+export const STAGE2_MES_PROMPT_VERSION = "stage2-mes-v1";
+/** Casos de amostra por escopo: semana 10, mês 20. */
+export const STAGE2_MAX_CASES = { semana: 10, mes: 20 } as const;
 
 export type Faixa = "alto" | "baixo";
 
@@ -40,6 +44,37 @@ export interface Stage2Input {
   criterios_indisponiveis: Criterion[];
   kpis: Record<string, string | number | null>;
   casos: SampleCase[];
+}
+
+/** O que a IA já escreveu para uma semana do mês (só os textos; os números do item não vão). */
+export interface SemanaPublicada {
+  semana: string; // "2026-09-02 a 2026-09-08"
+  pontos_fortes: string[];
+  oportunidades: string[];
+}
+
+export interface Stage2MesInput extends Stage2Input {
+  periodo: "mes";
+  semanas_publicadas: SemanaPublicada[];
+}
+
+export function buildStage2MesInput(
+  escopo: string,
+  q: Qualidade,
+  kpis: Stage2Input["kpis"],
+  casos: SampleCase[],
+  semanas: SemanaPublicada[]
+): Stage2MesInput {
+  return { ...buildStage2Input(escopo, q, kpis, casos), periodo: "mes", semanas_publicadas: semanas };
+}
+
+/** Extrai os textos de `texto_fortes` / `texto_ops` já publicados (JSON do banco) para o contexto do mês. */
+export function textosPublicados(items: unknown, max = 4): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((i) => (i && typeof i === "object" ? (i as { texto?: unknown }).texto : null))
+    .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    .slice(0, max);
 }
 
 export function buildStage2Input(
@@ -147,6 +182,11 @@ Regras:
 5. Não use nome, telefone ou documento de cliente. O nome do atendente pode aparecer.
 6. De 2 a 4 pontos fortes e de 2 a 4 oportunidades. Sem base para um item, devolva menos itens.
 7. Critérios em "criterios_indisponiveis" não podem ser citados.`;
+
+export const STAGE2_MES_SYSTEM_PROMPT = `${STAGE2_SYSTEM_PROMPT}
+8. Este é o relatório do MÊS inteiro. "semanas_publicadas" traz o que já foi escrito para cada semana do mês. Use isso só como contexto: aponte o que se repetiu ao longo do mês (ex.: "Isso apareceu em várias semanas") e o que aconteceu uma vez só.
+9. Não copie frases das semanas, não cite datas nem números de semanas, e não escreva nenhuma quantidade (nem "3 semanas"): diga "várias semanas", "quase todas as semanas", "no começo do mês".
+10. Os números e os casos do mês valem mais do que o texto das semanas: se divergirem, siga os números do mês.`;
 
 const itemSchema = {
   type: "object",

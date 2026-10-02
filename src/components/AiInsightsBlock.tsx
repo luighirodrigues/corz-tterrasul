@@ -1,21 +1,24 @@
 import React from "react";
 import type { AiInsight } from "@/lib/types";
 import { Sparkles, CircleCheck, Lightbulb } from "lucide-react";
-import { MSG } from "@/lib/labels";
+import { PERIODO, type TipoPeriodo } from "@/lib/labels";
 
 interface AiInsightsBlockProps {
   pontosFortes: AiInsight[] | null;
   oportunidades: AiInsight[] | null;
   totalConversas: number;
+  /** Semana (padrão) ou mês: muda só os textos. */
+  tipo?: Exclude<TipoPeriodo, "livre">;
 }
 
 const base = (item: AiInsight, total: number) =>
   `Base: ${item.n_casos} ${item.n_casos === 1 ? "conversa" : "conversas"}${item.n_casos < total ? ` de ${total}` : ""}`;
 
-export const AiInsightsBlock: React.FC<AiInsightsBlockProps> = ({ pontosFortes, oportunidades, totalConversas }) => {
+export const AiInsightsBlock: React.FC<AiInsightsBlockProps> = ({ pontosFortes, oportunidades, totalConversas, tipo = "semana" }) => {
+  const t = PERIODO[tipo];
   if (pontosFortes === null && oportunidades === null) {
     return (
-      <section className="bg-surface border border-line rounded-card p-6 text-[13px] text-muted">{MSG.semAnalise}</section>
+      <section className="bg-surface border border-line rounded-card p-6 text-[13px] text-muted">{t.semAnalise}</section>
     );
   }
   const fortes = pontosFortes ?? [];
@@ -26,7 +29,7 @@ export const AiInsightsBlock: React.FC<AiInsightsBlockProps> = ({ pontosFortes, 
       <div className="flex items-center gap-3">
         <Sparkles className="w-[22px] h-[22px] text-primary" strokeWidth={1.75} />
         <div className="flex flex-col">
-          <h2 className="text-base font-medium">Análise da semana</h2>
+          <h2 className="text-base font-medium">{t.analise}</h2>
           <span className="text-[13px] text-muted">
             Resumo gerado por IA a partir {totalConversas === 1 ? "da conversa avaliada" : `das ${totalConversas} conversas avaliadas`}
           </span>
@@ -40,7 +43,7 @@ export const AiInsightsBlock: React.FC<AiInsightsBlockProps> = ({ pontosFortes, 
             <span className="text-[15px] font-medium">O que está funcionando</span>
           </div>
           {fortes.length === 0 ? (
-            <p className="py-4 text-[13px] text-muted">Nenhum ponto forte registrado nesta semana.</p>
+            <p className="py-4 text-[13px] text-muted">Nenhum ponto forte registrado {t.nesta}.</p>
           ) : (
             fortes.map((item, i) => (
               <div key={i} className="flex flex-col gap-1.5 py-4 border-b border-divider last:border-b-0">

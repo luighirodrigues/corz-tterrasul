@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/db/prisma";
+import { parseTipo } from "@/lib/reports-loader";
 
 /**
- * Série histórica: a nota OFICIAL de cada semana, exatamente como foi publicada
- * (nunca recalculada). Um ponto por semana.
+ * Série histórica: a nota OFICIAL de cada semana (ou de cada mês, com tipo=mes), exatamente como foi
+ * publicada (nunca recalculada). Um ponto por período; semanas e meses não se misturam.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
 
   try {
     const rows = await prisma.periodReport.findMany({
-      where: { scopeType, scopeId },
+      where: { scopeType, scopeId, granularity: parseTipo(searchParams.get("tipo")) },
       orderBy: { periodStart: "asc" },
       select: { periodStart: true, periodEnd: true, qualidade: true, preliminar: true },
     });

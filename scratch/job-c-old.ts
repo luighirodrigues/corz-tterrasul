@@ -1,6 +1,6 @@
-import { prisma } from "../db/prisma";
-import { closingRate, parseList, tallyCards, type CardTally } from "../domain/lost-reasons";
-import { mean, median } from "../domain/session-metrics";
+import { prisma } from "../src/db/prisma.js";
+import { closingRate, parseList, tallyCards, type CardTally } from "../src/domain/lost-reasons.js";
+import { computeSessionMetrics, mean, median } from "../src/domain/session-metrics.js";
 
 /**
  * Métricas sintéticas do recorte (sem LLM). Valores `null` = sem dado para calcular
@@ -52,10 +52,6 @@ export function formatDuration(seconds: number | null): string {
 const pct = (count: number, total: number) => Number(((count / total) * 100).toFixed(1));
 
 /**
- * Soma os indicadores que o job de métricas (`job-metrics.ts`) já gravou em cada conversa: nenhuma mensagem é
- * lida aqui. Conversas ainda marcadas como `metricsStale` valem o que foi gravado por último; quem publica
- * (Job E) roda o job de métricas antes.
- *
  * Base de datas por métrica (PRD §6):
  *  - TMR, sem resposta, reativação: sessões INICIADAS na janela, qualquer status (operacional);
  *  - FTR: sessões COMPLETED que ENCERRARAM na janela;
@@ -80,9 +76,7 @@ export async function calculateSynthetics(filter: SyntheticFilter): Promise<Synt
   // Operacional: iniciadas na janela
   const started = await prisma.session.findMany({
     where: { tenantId, startAt: { gte: startDate, lte: endDate }, ...agentFilter, ...panelFilter, ...departmentFilter },
-    select: { tmrSeconds: true, tmrFallback: true, semResposta: true, reativada: true },
-    // Ordem fixa: a média de floats depende da ordem das parcelas, e o mesmo período tem de dar o mesmo número.
-    orderBy: [{ startAt: "asc" }, { id: "asc" }],
+    include: { messages: { orderBy: { timestamp: "asc" } } },
   });
 
   // FTR: encerradas na janela
@@ -95,7 +89,7 @@ export async function calculateSynthetics(filter: SyntheticFilter): Promise<Synt
       ...panelFilter,
       ...departmentFilter,
     },
-    select: { ftrSeconds: true },
+    select: { status: true, startAt: true, endAt: true, timeService: true, firstResponseAt: true },
   });
 
   const tmr: number[] = [];
@@ -103,13 +97,16 @@ export async function calculateSynthetics(filter: SyntheticFilter): Promise<Synt
   let reativadas = 0;
   let fallback = 0;
   for (const s of started) {
-    if (s.tmrSeconds != null) tmr.push(s.tmrSeconds);
-    if (s.tmrFallback) fallback++;
-    if (s.semResposta) semResposta++;
-    if (s.reativada) reativadas++;
+    const r = computeSessionMetrics(s, s.messages);
+    if (r.tmrSeconds != null) tmr.push(r.tmrSeconds);
+    if (r.tmrFromFallback) fallback++;
+    if (r.semResposta) semResposta++;
+    if (r.reativada) reativadas++;
   }
 
-  const ftr = finished.map((s) => s.ftrSeconds).filter((v): v is number => v != null);
+  const ftr = finished
+    .map((s) => computeSessionMetrics(s, []).ftrSeconds)
+    .filter((v): v is number => v != null);
 
   const n = started.length;
   const tmrMedioSegundos = mean(tmr);

@@ -116,6 +116,14 @@ model Session {
   timeService         Int?      @map("time_service")
   flwCreatedAt        DateTime? @map("flw_created_at")
   flwUpdatedAt        DateTime? @map("flw_updated_at")
+  // Indicadores da conversa (computeSessionMetrics), gravados pelo job de métricas.
+  // `metricsStale` = a sessão ou as mensagens mudaram desde o último cálculo.
+  tmrSeconds          Float?    @map("tmr_seconds")
+  tmrFallback         Boolean   @default(false) @map("tmr_fallback")
+  semResposta         Boolean   @default(false) @map("sem_resposta")
+  reativada           Boolean   @default(false)
+  ftrSeconds          Float?    @map("ftr_seconds")
+  metricsStale        Boolean   @default(true) @map("metrics_stale")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -130,6 +138,8 @@ model Session {
   @@index([tenantId, agentExternalId])
   @@index([tenantId, contactId])
   @@index([tenantId, departmentId])
+  @@index([tenantId, startAt])
+  @@index([tenantId, metricsStale])
   @@map("sessions")
 }
 
@@ -286,12 +296,14 @@ model PeriodReport {
   comparativo         Json?     // evolução vs semana anterior recalculada (só para a seta)
   correctedAt         DateTime? @map("corrected_at")
   correctionReason    String?   @map("correction_reason")
+  granularity         String    @default("semana") // semana | mes
 
   tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   revisions PeriodReportRevision[]
 
   @@unique([tenantId, periodStart, periodEnd, scopeType, scopeId])
   @@index([tenantId, periodStart, periodEnd])
+  @@index([tenantId, granularity, periodStart])
   @@map("period_reports")
 }
 

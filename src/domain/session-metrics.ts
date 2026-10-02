@@ -3,7 +3,7 @@ import {
   isConversationMessage,
   isHumanOperatorMessage,
   type MessageLike,
-} from "./message-kind.js";
+} from "./message-kind";
 
 export interface TimedMessage extends MessageLike {
   timestamp: Date;

@@ -3,12 +3,13 @@ import { prisma } from "./db/prisma.js";
 import { runJobASyncSessions } from "./jobs/job-a-sync-sessions.js";
 import { runJobBSyncCards } from "./jobs/job-b-sync-cards.js";
 import { calculateSynthetics } from "./jobs/job-c-synthetics.js";
+import { runJobMetrics } from "./jobs/job-metrics.js";
 import { runJobDStage1Analysis } from "./jobs/job-d-stage1-analysis.js";
 import { runJobEStage2Reports } from "./jobs/job-e-stage2-report.js";
 import { exportReportHtml } from "./report/html-reporter.js";
 import { ensureTenant, panelConfigFromEnv } from "./domain/tenant.js";
 import { PANEL_KEYS, resolvePanelIds, type PanelKey } from "./domain/panels.js";
-import { lastClosedPeriod, periodContaining, type Period } from "./domain/period.js";
+import { lastClosedMonth, lastClosedPeriod, monthKey, parseMonth, periodContaining, type Period } from "./domain/period.js";
 import { resolveScopeTitle } from "./domain/scope-title.js";
 import { withAdvisoryLock } from "./domain/lock.js";
 import { FlwClient } from "./flw/flw-client.js";
@@ -19,11 +20,13 @@ function argValue(args: string[], flag: string): string | undefined {
 }
 
 /**
- * Janela do relatório: `--week YYYY-MM-DD` (qualquer data dentro da semana-alvo)
- * ou, sem argumento, a última janela já encerrada. Sempre no fuso do tenant.
+ * Janela do relatório: `--month AAAA-MM` (mês do calendário), `--week YYYY-MM-DD` (qualquer data dentro
+ * da semana-alvo) ou, sem argumento, a última semana já encerrada. Sempre no fuso do tenant.
  */
 async function resolveReportPeriod(tenantId: string, args: string[]): Promise<Period> {
   const tenant = await ensureTenant(tenantId);
+  const month = argValue(args, "--month");
+  if (month) return parseMonth(month, tenant.timezone);
   const week = argValue(args, "--week");
   if (week) {
     const ref = new Date(`${week}T12:00:00`);
@@ -53,10 +56,12 @@ async function publishPeriod(tenantId: string, args: string[], period: Period): 
 
   console.log(`Janela: ${period.label} (${period.start.toISOString()} → ${period.end.toISOString()})`);
 
+  const isMonth = period.granularity === "mes";
   const result = await runJobEStage2Reports({
     tenantId,
     startDate: period.start,
     endDate: period.end,
+    granularity: isMonth ? "mes" : "semana",
     dryRun,
     correct,
     reason,
@@ -73,7 +78,8 @@ async function publishPeriod(tenantId: string, args: string[], period: Period): 
     }),
   ]);
   const agentNames = new Map(agents.map((a) => [a.agentExternalId as string, a.agentName as string]));
-  const day = period.label.split(" a ")[0];
+  // Nome do arquivo: o 1º dia da semana ("2026-09-23") ou o mês ("2026-09").
+  const day = isMonth ? monthKey(period, tenant?.timezone) : period.label.split(" a ")[0];
 
   if (dryRun) {
     for (const d of result.drafts) {
@@ -123,8 +129,15 @@ async function run(command: string, args: string[]) {
       break;
     }
 
+    case "metrics": {
+      console.log("=== INDICADORES POR CONVERSA (TMR, SEM RESPOSTA, REATIVAÇÃO, FTR) ===");
+      await runJobMetrics({ tenantId, all: args.includes("--all") });
+      break;
+    }
+
     case "synthetics": {
       console.log("=== CÁLCULO DE MÉTRICAS SINTÉTICAS (JOB C) ===");
+      await runJobMetrics({ tenantId });
       const period = await resolveReportPeriod(tenantId, args);
       console.log(`Janela: ${period.label}`);
       const metrics = await calculateSynthetics({ tenantId, startDate: period.start, endDate: period.end });
@@ -172,6 +185,13 @@ async function run(command: string, args: string[]) {
       break;
     }
 
+    case "publish:monthly": {
+      console.log("=== IA ESTÁGIO 2 & RELATÓRIOS DO ÚLTIMO MÊS ENCERRADO (JOB E) ===");
+      const tenant = await ensureTenant(tenantId);
+      await publishPeriod(tenantId, args, lastClosedMonth(new Date(), tenant.timezone));
+      break;
+    }
+
     case "publish:weekly":
     case "report": {
       console.log("=== IA ESTÁGIO 2 & RELATÓRIOS DO PERÍODO (JOB E) ===");
@@ -208,16 +228,19 @@ Comandos:
   job:sync        Sync incremental da FLW (Jobs A & B). 1ª carga: --from YYYY-MM-DD ou --all
                   [--from YYYY-MM-DD | --days N | --all | --resume]
   job:cards       Sync incremental apenas dos cards (Job B)                   [--from | --days | --all]
+  job:metrics     Recalcula os indicadores gravados em cada conversa (1ª vez: backfill)  [--all]
   job:synthetics  Métricas sintéticas da janela (Job C)                       [--week YYYY-MM-DD]
   job:stage1      Análise de IA por sessão (Job D)     [--limit N | --since YYYY-MM-DD | --session ID | --force]
   job:report      Publica os relatórios da janela (Job E)
   pipeline        Sync + IA + relatório da janela
   daily           Rotina diária: sync incremental + IA estágio 1 (agende de madrugada)
   publish:weekly  Publica a última janela encerrada (agende na quinta de manhã)
+  publish:monthly Publica o último mês encerrado (agende no dia 2 de cada mês, depois do daily)
   config:lost-reasons  Lista os motivos de perda dos painéis para configurar o .env
 
 Opções do report/pipeline:
   --week YYYY-MM-DD      Qualquer data dentro da semana-alvo (padrão: última janela encerrada)
+  --month AAAA-MM        Mês do calendário (no report/pipeline; o publish:monthly já usa o último mês encerrado)
   --dry-run              Não grava; gera rascunhos em ./reports/rascunho
   --allow-incomplete     Publica mesmo com a trava falhando (falhas vão para as limitações)
   --correct --reason "." Corrige relatório já publicado (guarda a versão anterior)
