@@ -1,0 +1,335 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Core",
+    "description": "",
+    "version": "1.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.wts.chat/core",
+      "description": "Production Server"
+    }
+  ],
+  "paths": {
+    "/v2/department": {
+      "get": {
+        "tags": [
+          "Equipes"
+        ],
+        "summary": "Listar",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublicDepartmentDTOV2"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalException"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DepartmentChannelDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DepartmentDetailsDistributionConfigDTO": {
+        "type": "object",
+        "properties": {
+          "expirationIsEnabled": {
+            "type": "boolean"
+          },
+          "maximumDurationInMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inactivityTimeInMinutes": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "InternalException": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "boolean"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          },
+          "details": {
+            "nullable": true
+          },
+          "id": {
+            "$ref": "#/components/schemas/InternalExceptionId"
+          },
+          "httpStatusCode": {
+            "enum": [
+              "Continue",
+              "SwitchingProtocols",
+              "Processing",
+              "EarlyHints",
+              "OK",
+              "Created",
+              "Accepted",
+              "NonAuthoritativeInformation",
+              "NoContent",
+              "ResetContent",
+              "PartialContent",
+              "MultiStatus",
+              "AlreadyReported",
+              "IMUsed",
+              "MultipleChoices",
+              "Ambiguous",
+              "MovedPermanently",
+              "Moved",
+              "Found",
+              "Redirect",
+              "SeeOther",
+              "RedirectMethod",
+              "NotModified",
+              "UseProxy",
+              "Unused",
+              "TemporaryRedirect",
+              "RedirectKeepVerb",
+              "PermanentRedirect",
+              "BadRequest",
+              "Unauthorized",
+              "PaymentRequired",
+              "Forbidden",
+              "NotFound",
+              "MethodNotAllowed",
+              "NotAcceptable",
+              "ProxyAuthenticationRequired",
+              "RequestTimeout",
+              "Conflict",
+              "Gone",
+              "LengthRequired",
+              "PreconditionFailed",
+              "RequestEntityTooLarge",
+              "RequestUriTooLong",
+              "UnsupportedMediaType",
+              "RequestedRangeNotSatisfiable",
+              "ExpectationFailed",
+              "MisdirectedRequest",
+              "UnprocessableEntity",
+              "Locked",
+              "FailedDependency",
+              "UpgradeRequired",
+              "PreconditionRequired",
+              "TooManyRequests",
+              "RequestHeaderFieldsTooLarge",
+              "UnavailableForLegalReasons",
+              "InternalServerError",
+              "NotImplemented",
+              "BadGateway",
+              "ServiceUnavailable",
+              "GatewayTimeout",
+              "HttpVersionNotSupported",
+              "VariantAlsoNegotiates",
+              "InsufficientStorage",
+              "LoopDetected",
+              "NotExtended",
+              "NetworkAuthenticationRequired"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "nullable": true
+          },
+          "environment": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InternalExceptionId": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "shortValue": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublicDepartmentAgentDTO": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "departmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isAgent": {
+            "type": "boolean"
+          },
+          "isSupervisor": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublicDepartmentDTOV2": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "companyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "directLinks": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "nullable": true
+            },
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "distribuitionEnabled": {
+            "type": "boolean"
+          },
+          "restrictionType": {
+            "enum": [
+              "NONE",
+              "DEPARTMENT_RESTRICTION",
+              "USER_RESTRICTION"
+            ],
+            "type": "string"
+          },
+          "distributionConfig": {
+            "$ref": "#/components/schemas/DepartmentDetailsDistributionConfigDTO"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicDepartmentAgentDTO"
+            },
+            "nullable": true
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentChannelDTO"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "apiKey",
+        "description": "Utilize o token permanente que foi gerado para sua conta na seção de integrações.<br>No campo abaixo, insira 'Bearer [token]' sem as aspas e sem os colchetes.<br>Exemplo: 'Bearer pn_EXEMPLO'.",
+        "name": "Authorization",
+        "in": "header"
+      }
+    }
+  },
+  "security": [
+    {
+      "Bearer": []
+    }
+  ],
+  "x-readme": {
+    "explorer-enabled": true,
+    "proxy-enabled": true
+  },
+  "_id": {
+    "buffer": {
+      "0": 101,
+      "1": 170,
+      "2": 182,
+      "3": 67,
+      "4": 7,
+      "5": 155,
+      "6": 138,
+      "7": 0,
+      "8": 84,
+      "9": 198,
+      "10": 161,
+      "11": 209
+    }
+  }
+}

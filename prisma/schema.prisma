@@ -21,6 +21,8 @@ model Tenant {
   panelOficinaId     String?  @map("panel_oficina_id")
   ignoredLostReasons String?  @map("ignored_lost_reasons") // fora do controle (nomes exatos, separados por vírgula)
   hygieneLostReasons String?  @map("hygiene_lost_reasons") // higienização: duplicado, já é cliente...
+  teamGroups         String?  @map("team_groups") // grupos de equipes da FLW: "Grupo: Equipe; Equipe | Outro: Equipe"
+  ignoredTeams       String?  @map("ignored_teams") // equipes da FLW fora dos relatórios por equipe (nomes separados por ";")
   timezone           String   @default("America/Sao_Paulo")
   periodWeekStart    Int      @default(3) @map("period_week_start") // ISO: 3 = quarta
   goLiveAt           DateTime? @map("go_live_at")
@@ -28,6 +30,7 @@ model Tenant {
   updatedAt          DateTime @updatedAt @map("updated_at")
 
   agents          Agent[]
+  departments     Department[]
   sessions        Session[]
   messages        Message[]
   panelCards      PanelCard[]
@@ -36,6 +39,24 @@ model Tenant {
   periodReports   PeriodReport[]
 
   @@map("tenants")
+}
+
+// -------------------------------------------------------------
+// Espelho de Equipes (GET /v2/department)
+// -------------------------------------------------------------
+model Department {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  externalId String   @map("external_id") // id da equipe na FLW (= sessions.department_id)
+  name       String
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalId])
+  @@map("departments")
 }
 
 // -------------------------------------------------------------
@@ -108,6 +129,7 @@ model Session {
   @@index([tenantId, status, endAt])
   @@index([tenantId, agentExternalId])
   @@index([tenantId, contactId])
+  @@index([tenantId, departmentId])
   @@map("sessions")
 }
 

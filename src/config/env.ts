@@ -37,6 +37,8 @@ const envSchema = z.object({
   PANEL_OFICINA_TITLE: z.string().default("Oficina"),
   IGNORED_LOST_REASONS: z.string().default(""),
   HYGIENE_LOST_REASONS: z.string().default(""),
+  TEAM_GROUPS: z.string().default(""),
+  IGNORED_TEAMS: z.string().default(""),
   CRITERION_MIN_COVERAGE: z.coerce.number().min(0).max(1).default(0.3),
 });
 

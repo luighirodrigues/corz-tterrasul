@@ -255,8 +255,8 @@ Reanálise: só se `prompt_version` subir, ou job manual `force`. Sessão que er
 |--------|--------|
 | `tenant_id` | |
 | `period_start` / `period_end` | Janela fechada |
-| `scope_type` | `geral` / `divisao` / `painel` / `agente` |
-| `scope_id` | id do painel, agente ou `carros` / `pecas` |
+| `scope_type` | `geral` / `divisao` / `equipe` / `painel` / `agente` |
+| `scope_id` | id do painel, agente, nome do grupo de equipes ou `carros` / `pecas` |
 | `sinteticos` | JSON (TMR, FTR, sem resposta, fechamento, reativação, n) |
 | `qualidade` | JSON (médias dos 5, nota, histograma 0–10, n) |
 | `funil` | JSON (etapas, OPEN/WON/LOST, lost reasons) |

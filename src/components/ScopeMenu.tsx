@@ -34,6 +34,7 @@ export const ScopeMenu: React.FC<ScopeMenuProps> = ({ reports, selectedId, onSel
   const groups = [
     { label: "Geral", items: reports.filter((r) => r.scopeType === "geral") },
     { label: "Divisões", items: reports.filter((r) => r.scopeType === "divisao") },
+    { label: "Equipes", items: reports.filter((r) => r.scopeType === "equipe") },
     { label: "Painéis do CRM", items: reports.filter((r) => r.scopeType === "painel") },
   ].filter((g) => g.items.length > 0);
 

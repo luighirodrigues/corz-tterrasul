@@ -48,7 +48,10 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({ agents, periodStart, perio
                   </span>
                   <div className="flex flex-col min-w-0">
                     <span className="text-base leading-6 font-medium truncate">{nomeEscopo(ag.title)}</span>
-                    <span className="text-[13px] text-muted">{conversasAvaliadas(ag.totalConversas)}</span>
+                    <span className="text-[13px] text-muted">
+                      {ag.equipe ? `${ag.equipe} · ` : ""}
+                      {conversasAvaliadas(ag.totalConversas)}
+                    </span>
                   </div>
                 </div>
                 <span className="text-[28px] leading-8 font-medium">{fmtNota(ag.notaGeral)}</span>

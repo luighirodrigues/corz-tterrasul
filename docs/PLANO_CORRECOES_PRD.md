@@ -44,7 +44,7 @@ Implementado no código, com `tsc` limpo, 93 testes passando e `next build` OK. 
 | M28 | Feito offline | `0_init` + `1_alinhamento_prd` geradas por `migrate diff`, só aditivas |
 | M29 | Parcial | 93 testes. Faltam os que precisam de banco: `immutability`, `sessions-api` |
 | M30 | Feito | cliente FLW usa o token do tenant |
-| M31 | Parcial | feito `config:lost-reasons`. Faltam departamentos, etapas do painel (ordem do funil) e notas |
+| M31 | Parcial | feito `config:lost-reasons` e departamentos (equipes). Faltam etapas do painel (ordem do funil) e notas |
 | M32 | Feito | `daily`, `publish:weekly` e trava de concorrência (lock no Postgres) |
 | M33 | Parcial | `main` corrigido; grupo pulado no Job D; falta ignorar `HIDDEN`/`UNDEFINED` nos sintéticos |
 
@@ -1077,7 +1077,7 @@ O schema é multi-tenant, mas o `FlwClient` usa sempre `env.FLW_TOKEN` (`flw-cli
 | Endpoint | Uso | Situação |
 |----------|-----|----------|
 | `GET /v1/session/{id}/note` | Notas internas | Não é chamado. Primeiro conferir se as notas já vêm como mensagens `type=NOTE`. Se vierem, dispensar. |
-| `GET /v2/department` | Equipes | Método existe (`flw-client.ts:191`), nunca é chamado. Sincronizar em tabela `departments` para os nomes. |
+| `GET /v2/department` | Equipes | **Feito.** O Job A sincroniza na tabela `departments` e alimenta o relatório por equipe (ver `docs/PLANO_EQUIPES.md`). |
 | `GET /v1/panel/{id}?IncludeDetails=Steps,StepsCardCount` | Etapas do painel | Não é chamado. Serve para **ordenar o funil** pela posição real das etapas; hoje sai na ordem em que aparecem. |
 | `GET /v1/panel/{id}/lost-reason` | Motivos de perda | Para o comando de configuração da M18. |
 | `GET /v1/company/officehours` | Horário de atendimento | Só se D5 decidir por TMR em horário comercial. |

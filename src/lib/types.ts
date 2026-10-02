@@ -1,4 +1,4 @@
-export type ScopeType = "geral" | "divisao" | "painel" | "agente";
+export type ScopeType = "geral" | "divisao" | "equipe" | "painel" | "agente";
 
 export interface CriteriaScores {
   atrito: number | null;
@@ -55,6 +55,8 @@ export interface ReportItem {
   slug: string;
   scopeType: ScopeType;
   scopeId: string;
+  /** Só atendentes: equipe principal na semana (grupo com mais conversas dele). */
+  equipe?: string | null;
   periodStart: string;
   periodEnd: string;
   preliminar: boolean;
@@ -87,6 +89,7 @@ export interface SessionDetail {
   id: string;
   number?: string | null;
   agentName: string;
+  equipe?: string | null;
   contactName: string;
   contactPhone: string;
   panelName?: string;

@@ -49,7 +49,11 @@ export const origemAutomatica = (origin: string): string => ORIGENS_AUTOMATICAS[
 
 /** Tira prefixos técnicos dos nomes de escopo. */
 export const nomeEscopo = (title: string): string =>
-  title.replace(/^Divisão\s+/, "").replace(/^Painel CRM\s*-?\s*/, "").replace(/^Atendente\s*-\s*/, "");
+  title
+    .replace(/^Divisão\s+/, "")
+    .replace(/^Equipe\s+/, "")
+    .replace(/^Painel CRM\s*-?\s*/, "")
+    .replace(/^Atendente\s*-\s*/, "");
 
 export const MSG = {
   erroDados: "Não foi possível carregar os dados agora. Tente novamente em alguns minutos.",

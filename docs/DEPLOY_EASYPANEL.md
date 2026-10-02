@@ -29,6 +29,7 @@ As tabelas são criadas sozinhas: ao subir, o container roda `prisma migrate dep
 | `PANEL_VENDAS_ID` `PANEL_CAMPANHAS_ID` `PANEL_PECAS_ID` `PANEL_OFICINA_ID` | ou os `PANEL_*_TITLE` exatos |
 | `GO_LIVE_AT` | ex.: `2026-09-01` |
 | `IGNORED_LOST_REASONS` / `HYGIENE_LOST_REASONS` | nomes exatos dos motivos (veja `pnpm config:lost-reasons`) |
+| `TEAM_GROUPS` / `IGNORED_TEAMS` | relatório por equipe; formato e exemplo no `.env.example`. Cole o valor **sem aspas**. Vazio = sem relatório por equipe |
 | `OPENAI_PRICE_STAGE1_INPUT_PER_1M` / `..._OUTPUT_PER_1M` | habilitam o teto `OPENAI_MAX_USD_PER_RUN` |
 | `TIMEZONE` | padrão `America/Sao_Paulo` |
 
@@ -59,3 +60,7 @@ Os HTMLs gerados ficam em `reports/` dentro do container (somem se o container f
 1. Rode `pnpm job:sync -- --from <data>` e confira o resultado.
 2. Rode `pnpm job:stage1` (vai chamar a OpenAI; sem `OPENAI_PRICE_*` não há teto de custo).
 3. Faça `job:report --dry-run` e leia o rascunho antes de publicar.
+
+## 5. Atualizar um banco que já existe
+
+O container roda `prisma migrate deploy` toda vez que sobe, então migrações novas entram sozinhas no deploy. **Se a migração falhar, a tela não sobe**: faça backup antes e não faça deploy com job rodando (o redeploy mata o job aberto no terminal). O passo a passo da migração `2_equipes` (backup, conferência, sync, semanas passadas e reversão) está em `docs/PLANO_EQUIPES.md`, seção E9.

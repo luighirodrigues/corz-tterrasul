@@ -33,6 +33,8 @@ export interface SyntheticFilter {
   agentExternalId?: string;
   /** Sessões/cards ligados a QUALQUER um destes painéis (divisão = 2 painéis). */
   panelIds?: string[];
+  /** Conversas que terminaram em QUALQUER uma destas equipes da FLW; cards ligados a elas (grupo de equipes). */
+  departmentIds?: string[];
 }
 
 export function formatDuration(seconds: number | null): string {
@@ -56,7 +58,7 @@ const pct = (count: number, total: number) => Number(((count / total) * 100).toF
  *  - Fechamento e funil: cards CRIADOS na janela, com o status ATUAL do card.
  */
 export async function calculateSynthetics(filter: SyntheticFilter): Promise<SyntheticMetrics> {
-  const { tenantId, startDate, endDate, agentExternalId, panelIds } = filter;
+  const { tenantId, startDate, endDate, agentExternalId, panelIds, departmentIds } = filter;
 
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
@@ -69,10 +71,11 @@ export async function calculateSynthetics(filter: SyntheticFilter): Promise<Synt
 
   const panelFilter = panelIds?.length ? { panelCards: { some: { panelId: { in: panelIds } } } } : {};
   const agentFilter = agentExternalId ? { agentExternalId } : {};
+  const departmentFilter = departmentIds ? { departmentId: { in: departmentIds } } : {};
 
   // Operacional: iniciadas na janela
   const started = await prisma.session.findMany({
-    where: { tenantId, startAt: { gte: startDate, lte: endDate }, ...agentFilter, ...panelFilter },
+    where: { tenantId, startAt: { gte: startDate, lte: endDate }, ...agentFilter, ...panelFilter, ...departmentFilter },
     include: { messages: { orderBy: { timestamp: "asc" } } },
   });
 
@@ -84,6 +87,7 @@ export async function calculateSynthetics(filter: SyntheticFilter): Promise<Synt
       endAt: { gte: startDate, lte: endDate },
       ...agentFilter,
       ...panelFilter,
+      ...departmentFilter,
     },
     select: { status: true, startAt: true, endAt: true, timeService: true, firstResponseAt: true },
   });
@@ -116,6 +120,7 @@ export async function calculateSynthetics(filter: SyntheticFilter): Promise<Synt
       flwCreatedAt: { gte: startDate, lte: endDate },
       ...(panelIds?.length ? { panelId: { in: panelIds } } : {}),
       ...(agentExternalId ? { responsibleUserId: agentExternalId } : {}),
+      ...(departmentIds ? { session: { departmentId: { in: departmentIds } } } : {}),
     },
     select: { status: true, lostReason: true },
   });

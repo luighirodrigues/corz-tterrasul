@@ -15,7 +15,8 @@ interface ConversationsTabProps {
 
 export const ConversationsTab: React.FC<ConversationsTabProps> = ({ sessions, periodStart, periodEnd, onOpen }) => {
   const [busca, setBusca] = useState("");
-  const lista = sessions.filter((s) => s.agentName.toLowerCase().includes(busca.trim().toLowerCase()));
+  const termo = busca.trim().toLowerCase();
+  const lista = sessions.filter((s) => `${s.agentName} ${s.equipe ?? ""}`.toLowerCase().includes(termo));
 
   return (
     <div className="flex flex-col gap-6">
@@ -32,8 +33,8 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ sessions, pe
             type="search"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            aria-label="Buscar por atendente"
-            placeholder="Buscar por atendente"
+            aria-label="Buscar por atendente ou equipe"
+            placeholder="Buscar por atendente ou equipe"
             className="flex-1 min-w-0 bg-transparent outline-none text-[15px]"
           />
         </label>
@@ -68,7 +69,10 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ sessions, pe
                 <span className="w-8 h-8 shrink-0 rounded-full bg-primary-soft text-primary-ink text-[13px] font-semibold flex items-center justify-center">
                   {s.agentName.charAt(0)}
                 </span>
-                <span className="font-medium truncate">{s.agentName}</span>
+                <span className="flex flex-col min-w-0">
+                  <span className="font-medium truncate">{s.agentName}</span>
+                  {s.equipe && <span className="text-xs text-muted truncate">{s.equipe}</span>}
+                </span>
               </span>
               <span className="flex md:hidden items-center justify-end gap-2 font-medium text-base">
                 <span className={`w-2 h-2 rounded-full ${TONE_DOT[tone]}`} />

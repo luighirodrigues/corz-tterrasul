@@ -7,6 +7,7 @@ import { STAGE1_PROMPT_VERSION } from "./job-d-stage1-analysis.js";
 import { checkPublishGate } from "../domain/publish-gate.js";
 import { previousPeriod, type Period } from "../domain/period.js";
 import { ensureTenant } from "../domain/tenant.js";
+import { assignTeamGroups, countUnassigned, parseIgnoredTeams, parseTeamGroups, type TeamAssignment } from "../domain/teams.js";
 import { aggregateQuality, CRITERION_LABEL, pickCases, type AnalysisRow, type Criterion } from "../domain/aggregate.js";
 import { parseList, tallyCards } from "../domain/lost-reasons.js";
 import { resolveSessionPanel } from "../domain/session-panel.js";
@@ -35,10 +36,12 @@ export const Stage2OutputSchema = z.object({
 });
 
 export interface ReportScope {
-  scopeType: "geral" | "divisao" | "painel" | "agente";
+  scopeType: "geral" | "divisao" | "equipe" | "painel" | "agente";
   scopeId: string;
   name: string;
   panelIds?: string[];
+  /** Equipe = grupo de equipes da FLW (TEAM_GROUPS): ids da FLW que contam nele. */
+  departmentIds?: string[];
   agentExternalId?: string;
 }
 
@@ -136,6 +139,31 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
   if (partsPanels.length > 0) {
     scopes.push({ scopeType: "divisao", scopeId: "pecas", name: "Peças e Oficina", panelIds: partsPanels });
   }
+  // Equipes: um relatório por grupo do TEAM_GROUPS. Configuração malformada falha aqui, antes de gravar qualquer relatório.
+  const teamGroups = parseTeamGroups(tenant.teamGroups);
+  let teamAssignment: TeamAssignment | null = null;
+  const knownDeptIds = new Set<string>();
+  if (teamGroups.length > 0) {
+    const departments = await prisma.department.findMany({
+      where: { tenantId },
+      select: { externalId: true, name: true },
+    });
+    for (const d of departments) knownDeptIds.add(d.externalId);
+    teamAssignment = assignTeamGroups(
+      departments.map((d) => ({ id: d.externalId, name: d.name })),
+      teamGroups,
+      parseIgnoredTeams(tenant.ignoredTeams),
+    );
+    for (const g of teamGroups) {
+      const ids = teamAssignment.idsByGroup.get(g.name)!;
+      if (ids.length === 0) {
+        console.warn(`[Job E] Equipe "${g.name}": nenhuma equipe da FLW sincronizada com esses nomes; sem relatório (rode o sync).`);
+        continue;
+      }
+      scopes.push({ scopeType: "equipe", scopeId: g.name, name: `Equipe ${g.name}`, departmentIds: ids });
+    }
+  }
+
   const panelScopes: Array<[string | null, string]> = [
     [tenant.panelVendasId, "Painel Vendas"],
     [tenant.panelCampanhasId, "Painel Campanhas"],
@@ -181,6 +209,7 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
         endAt: { gte: start, lte: end },
         ...(scope.agentExternalId ? { agentExternalId: scope.agentExternalId } : {}),
         ...(scope.panelIds?.length ? { panelCards: { some: { panelId: { in: scope.panelIds } } } } : {}),
+        ...(scope.departmentIds ? { departmentId: { in: scope.departmentIds } } : {}),
       },
       include: {
         analyses: { where: { promptVersion: STAGE1_PROMPT_VERSION } },
@@ -229,7 +258,26 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
     return { sessions, rows, qualidade, nSkipped, nError, nPending, nSemEsteira, nDuplicateCards };
   }
 
+  const reportKey = (scope: ReportScope) => ({
+    tenantId_periodStart_periodEnd_scopeType_scopeId: {
+      tenantId,
+      periodStart: options.startDate,
+      periodEnd: options.endDate,
+      scopeType: scope.scopeType,
+      scopeId: scope.scopeId,
+    },
+  });
+
   for (const scope of scopes) {
+    // Já publicado: não gasta análise nem IA à toa (o relatório publicado nunca é refeito sem --correct).
+    if (!options.dryRun && !options.correct) {
+      const done = await prisma.periodReport.findUnique({ where: reportKey(scope), select: { publishedAt: true } });
+      if (done) {
+        console.log(`[Job E] ${scope.name}: já publicado em ${done.publishedAt.toISOString()}; mantido sem alteração.`);
+        result.skippedExisting++;
+        continue;
+      }
+    }
     console.log(`[Job E] Processando escopo: [${scope.scopeType}] ${scope.name} (${scope.scopeId})...`);
     const limitations: string[] = [...gateLimitations];
 
@@ -275,6 +323,7 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
       endDate: options.endDate,
       agentExternalId: scope.agentExternalId,
       panelIds: scope.panelIds,
+      departmentIds: scope.departmentIds,
     });
 
     // C. Funil CRM (cards criados na janela; status ATUAL do card)
@@ -377,6 +426,15 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
       const cover = rows.length ? rows.filter((r) => r.scores[c] != null).length / rows.length : 0;
       limitations.push(`Critério "${CRITERION_LABEL[c]}" fora da nota: aplicável em ${fmtPct(cover)} das conversas.`);
     }
+    if (scope.scopeType === "geral" && teamAssignment) {
+      const unassigned = countUnassigned(sessions, teamAssignment, knownDeptIds);
+      if (unassigned.length > 0) {
+        const total = unassigned.reduce((sum, u) => sum + u.count, 0);
+        limitations.push(
+          `${total} conversas não entram em nenhuma equipe: ${unassigned.map((u) => `${u.name} (${u.count})`).join(", ")}.`
+        );
+      }
+    }
     if (nDuplicateCards > 0) limitations.push(`${nDuplicateCards} sessões com mais de um card; usado o mais recente.`);
     if (sinteticos.tmrFallbackCount) {
       limitations.push(`TMR de ${sinteticos.tmrFallbackCount} conversas veio do campo da sessão (sem mensagens no espelho).`);
@@ -402,15 +460,7 @@ export async function runJobEStage2Reports(options: RunStage2Options): Promise<S
       continue;
     }
 
-    const key = {
-      tenantId_periodStart_periodEnd_scopeType_scopeId: {
-        tenantId,
-        periodStart: options.startDate,
-        periodEnd: options.endDate,
-        scopeType: scope.scopeType,
-        scopeId: scope.scopeId,
-      },
-    };
+    const key = reportKey(scope);
     const existing = await prisma.periodReport.findUnique({ where: key });
 
     if (existing && !options.correct) {

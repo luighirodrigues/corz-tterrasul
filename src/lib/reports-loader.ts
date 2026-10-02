@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { prisma } from "@/db/prisma";
 import { resolveScopeTitle } from "@/domain/scope-title";
 import type { ReportItem, ScopeType } from "./types";
+import { loadAgentTeams, loadTeamGroupMap } from "./teams-loader";
 
 export interface PeriodOption {
   start: string;
@@ -44,8 +45,11 @@ export async function loadReports(periodStart?: string): Promise<ReportItem[]> {
     }),
   ]);
   const agentNames = new Map(agents.map((a) => [a.agentExternalId as string, a.agentName as string]));
+  const agentTeams = rows.length
+    ? await loadAgentTeams({ start, end: rows[0].periodEnd }, await loadTeamGroupMap())
+    : new Map<string, string>();
 
-  const order: Record<string, number> = { geral: 1, divisao: 2, painel: 3, agente: 4 };
+  const order: Record<string, number> = { geral: 1, divisao: 2, equipe: 3, painel: 4, agente: 5 };
 
   return rows
     .map((r): ReportItem => {
@@ -57,6 +61,7 @@ export async function loadReports(periodStart?: string): Promise<ReportItem[]> {
         slug: `${r.scopeType}_${r.scopeId}`,
         scopeType: r.scopeType as ScopeType,
         scopeId: r.scopeId,
+        equipe: r.scopeType === "agente" ? (agentTeams.get(r.scopeId) ?? null) : undefined,
         periodStart: isoDay(r.periodStart),
         // O fim da janela é 23:59 de São Paulo; em UTC já é o dia seguinte.
         periodEnd: DateTime.fromJSDate(r.periodEnd, { zone: "America/Sao_Paulo" }).toISODate() as string,

@@ -2,6 +2,7 @@ import { prisma } from "@/db/prisma";
 import { anonymizeText } from "@/utils/anonymizer";
 import { isClientMessage } from "@/domain/message-kind";
 import type { SessionDetail } from "./types";
+import { loadTeamGroupMap } from "./teams-loader";
 
 export async function loadAuditedSessions(options: { agent?: string; periodStart?: string } = {}): Promise<SessionDetail[]> {
   const agentSlug = options.agent;
@@ -15,6 +16,8 @@ export async function loadAuditedSessions(options: { agent?: string; periodStart
     select: { periodStart: true, periodEnd: true },
   });
   if (!report) return [];
+
+  const groupOf = await loadTeamGroupMap();
 
   const dbSessions = await prisma.session.findMany({
     where: {
@@ -57,6 +60,7 @@ export async function loadAuditedSessions(options: { agent?: string; periodStart
       id: s.externalId,
       number: s.number,
       agentName: s.agentName || "Não identificado",
+      equipe: s.departmentId ? (groupOf.get(s.departmentId) ?? null) : null,
       contactName: "{{cliente}}",
       contactPhone: "{{fone}}",
       panelName: card ? card.stepTitle || "Sem etapa" : "sem esteira",

@@ -109,9 +109,27 @@ export interface FlwAgentDTO {
   active?: boolean;
 }
 
+export interface FlwDepartmentAgentDTO {
+  userId: string; // mesmo id das conversas (não o `id` de cadastro do agente)
+  departmentId?: string;
+  isAgent?: boolean;
+  isSupervisor?: boolean;
+}
+
+export interface FlwDepartmentChannelDTO {
+  id: string;
+  number?: string | null;
+  name?: string | null;
+  type?: string | null;
+}
+
 export interface FlwDepartmentDTO {
   id: string;
   name: string;
+  isDefault?: boolean;
+  restrictionType?: "NONE" | "DEPARTMENT_RESTRICTION" | "USER_RESTRICTION" | string;
+  agents?: FlwDepartmentAgentDTO[] | null;
+  channels?: FlwDepartmentChannelDTO[] | null;
 }
 
 export interface FlwPanelDTO {

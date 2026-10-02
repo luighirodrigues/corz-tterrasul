@@ -4,6 +4,7 @@ import { FlwClient } from "../flw/flw-client.js";
 import type { FlwMessageDTO, FlwSessionDTO } from "../flw/flw-types.js";
 import { ensureTenant } from "../domain/tenant.js";
 import { getSyncCursor, resolveSyncWindow } from "../domain/sync-window.js";
+import { assignTeamGroups, parseIgnoredTeams, parseTeamGroups } from "../domain/teams.js";
 
 export interface SyncSessionsOptions {
   tenantId?: string;
@@ -146,6 +147,32 @@ export async function runJobASyncSessions(options: SyncSessionsOptions = {}): Pr
     }
   } catch (err: any) {
     console.warn(`[Job A] Aviso ao sincronizar agentes: ${err.message}`);
+  }
+
+  // 2b. Equipes. Equipe apagada na FLW não é apagada aqui: conversas antigas apontam para ela.
+  try {
+    const departments = await client.listDepartments();
+    for (const dep of departments) {
+      const data = { name: dep.name, isDefault: dep.isDefault ?? false };
+      await prisma.department.upsert({
+        where: { tenantId_externalId: { tenantId, externalId: dep.id } },
+        update: data,
+        create: { tenantId, externalId: dep.id, ...data },
+      });
+    }
+    const groups = parseTeamGroups(tenant.teamGroups);
+    if (groups.length > 0) {
+      const a = assignTeamGroups(departments, groups, parseIgnoredTeams(tenant.ignoredTeams));
+      console.log(
+        `[Job A] Equipes: ${groups.map((g) => `${g.name} (${a.idsByGroup.get(g.name)!.length} da FLW)`).join(", ")}`,
+      );
+      if (a.unmapped.length) console.warn(`[Job A] Equipes da FLW sem grupo: ${a.unmapped.map((t) => t.name).join(", ")}`);
+      if (a.missing.length) console.warn(`[Job A] Nomes do TEAM_GROUPS que não existem na FLW: ${a.missing.join(", ")}`);
+    } else {
+      console.log(`[Job A] ${departments.length} equipes da FLW sincronizadas (TEAM_GROUPS vazio: relatório por equipe desligado).`);
+    }
+  } catch (err: any) {
+    console.warn(`[Job A] Aviso ao sincronizar equipes: ${err.message}`);
   }
 
   // 3. Janela: retomar job anterior ou decidir (incremental / backfill / full)

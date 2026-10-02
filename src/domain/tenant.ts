@@ -33,6 +33,8 @@ export async function ensureTenant(tenantId: string = env.DEFAULT_TENANT_ID) {
     goLiveAt: goLive && !isNaN(goLive.getTime()) ? goLive : null,
     ignoredLostReasons: env.IGNORED_LOST_REASONS,
     hygieneLostReasons: env.HYGIENE_LOST_REASONS,
+    teamGroups: env.TEAM_GROUPS,
+    ignoredTeams: env.IGNORED_TEAMS,
   };
   const panelIds = {
     ...(env.PANEL_VENDAS_ID ? { panelVendasId: env.PANEL_VENDAS_ID } : {}),
