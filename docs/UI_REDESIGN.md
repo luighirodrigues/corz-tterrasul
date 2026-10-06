@@ -15,7 +15,7 @@ e **nenhum termo técnico visível**. Este documento é a fonte da verdade do es
 | Tema | Decisão |
 |---|---|
 | Abas | **Visão geral · Atendentes · Conversas**. A aba "Pipeline & Jobs" sai do menu. |
-| Parte técnica | Vai para a rota `/status` (sem link no menu, continua atrás do Basic Auth). Comandos de CLI saem da interface. |
+| Parte técnica | Vai para a rota `/status` (sem link no menu, fica só para administrador). Comandos de CLI saem da interface. |
 | Escopo | O título da página vira o seletor (menu agrupado: Geral / Divisões / Painéis do CRM). Some a faixa de chips. |
 | Ranking | Continua em cards (só visual novo). Tabela com ordenação fica para a Fase 2. |
 | KPIs | **5** indicadores. "Resp. Cliente" sai: é só `100 − Sem resposta` (`job-c-synthetics.ts:131`). |

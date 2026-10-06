@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { ChevronRight, Search } from "lucide-react";
 import type { ContagensConversas, FaixaConversas, OrdemConversas, SessionDetail } from "@/lib/types";
+import { apiFetch } from "@/lib/api";
 import { fmtDiaMes, fmtDuracao, fmtInt, fmtNota, fmtQtd } from "@/lib/format";
 import { MSG, PERIODO, scoreStatus, TONE_DOT, textoAnonimo, type TipoPeriodo } from "@/lib/labels";
 import { TextoAnonimo } from "@/components/TextoAnonimo";
@@ -75,7 +76,7 @@ export const ConversationsList: React.FC<ConversationsListProps> = ({ tipo, base
     let ativo = true;
     setCarregando(true);
     setErro(null);
-    fetch(url(0))
+    apiFetch(url(0))
       .then(async (r) => {
         if (!r.ok) throw new Error(String(r.status));
         const d: Page = await r.json();
@@ -97,7 +98,7 @@ export const ConversationsList: React.FC<ConversationsListProps> = ({ tipo, base
   const carregarMais = async () => {
     setCarregandoMais(true);
     try {
-      const r = await fetch(url(sessions.length));
+      const r = await apiFetch(url(sessions.length));
       if (!r.ok) throw new Error(String(r.status));
       const d: Page = await r.json();
       setSessions((atual) => [...atual, ...d.sessions.filter((n) => !atual.some((s) => s.id === n.id))]);

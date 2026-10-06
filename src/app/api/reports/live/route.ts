@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { authorizeApi } from "@/auth/dal";
 import { FreePeriodError, loadLiveReports } from "@/lib/live-loader";
 
 /** Relatório de um intervalo livre (`?de=2026-09-05&ate=2026-09-10`), calculado na hora. */
 export async function GET(request: Request) {
+  const auth = await authorizeApi();
+  if (auth instanceof Response) return auth;
   const { searchParams } = new URL(request.url);
   const de = searchParams.get("de");
   const ate = searchParams.get("ate");

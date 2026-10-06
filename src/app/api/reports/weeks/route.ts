@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { authorizeApi } from "@/auth/dal";
 import { loadWeeksOfMonth } from "@/lib/reports-loader";
 
 /** As semanas oficiais de um mês publicado (a que mês cada semana pertence: D7), com a nota de cada uma. */
 export async function GET(request: Request) {
+  const auth = await authorizeApi();
+  if (auth instanceof Response) return auth;
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("period");
   const scopeType = searchParams.get("scopeType");

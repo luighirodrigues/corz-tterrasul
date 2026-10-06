@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeApi } from "@/auth/dal";
 import { FreePeriodError, resolveFreePeriod } from "@/lib/live-loader";
 import { parseTipo, resolvePublishedWindow } from "@/lib/reports-loader";
 import { loadAuditedSessions, loadSessionById, SESSIONS_PAGE_SIZE } from "@/lib/sessions-loader";
@@ -21,6 +22,8 @@ const VAZIO = { sessions: [], total: 0, contagens: { todas: 0, abaixo: 0, naMeta
  * Com `id`, devolve uma conversa só, com as mensagens: { sessions: [conversa] }.
  */
 export async function GET(request: Request) {
+  const auth = await authorizeApi();
+  if (auth instanceof Response) return auth;
   try {
     const { searchParams } = new URL(request.url);
     const de = searchParams.get("de");

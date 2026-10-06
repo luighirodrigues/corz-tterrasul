@@ -12,5 +12,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Só para desenvolvimento: um SMTP de mentira. Os e-mails de resumo não saem de verdade;
+  # eles aparecem em http://localhost:8025. No .env: SMTP_HOST=localhost, SMTP_PORT=1025.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: corz_qualidade_mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   postgres_data:

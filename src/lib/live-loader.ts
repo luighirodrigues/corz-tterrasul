@@ -28,7 +28,13 @@ export async function resolveFreePeriod(de: string, ate: string, now: Date = new
  * Relatório de um intervalo qualquer (L-D1): calculado na hora com as MESMAS regras do relatório publicado
  * (`computeScope`), sem texto da IA, sem comparação e sem gravar nada.
  */
-export async function loadLiveReports(de: string, ate: string, now: Date = new Date()): Promise<ReportItem[]> {
+export async function loadLiveReports(
+  de: string,
+  ate: string,
+  now: Date = new Date(),
+  /** `semAtendentes` pula os escopos por atendente (o e-mail não usa). O padrão calcula todos, como o painel. */
+  opcoes: { semAtendentes?: boolean } = {},
+): Promise<ReportItem[]> {
   const resolved = await resolveFreePeriod(de, ate, now);
   if (!resolved) return [];
   const { tenant, free } = resolved;
@@ -37,7 +43,8 @@ export async function loadLiveReports(de: string, ate: string, now: Date = new D
 
   const ctx: ScopeContext = { tenant, stage1PromptVersion: STAGE1_PROMPT_VERSION, minCoverage: env.CRITERION_MIN_COVERAGE };
   const teams = await resolveTeams(ctx);
-  const { scopes } = await buildScopes(ctx, window, teams);
+  const { scopes: todos } = await buildScopes(ctx, window, teams);
+  const scopes = opcoes.semAtendentes ? todos.filter((s) => s.scopeType !== "agente") : todos;
 
   const [lastSync, stale] = await Promise.all([
     prisma.syncJob.findFirst({

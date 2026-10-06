@@ -1,5 +1,8 @@
 import React from "react";
 import { PeriodPicker, type PeriodPickerProps } from "./PeriodPicker";
+import { UserMenu, type UsuarioMenu } from "./UserMenu";
+
+export type { UsuarioMenu } from "./UserMenu";
 
 export type TabId = "visao" | "atendentes" | "conversas";
 
@@ -10,11 +13,12 @@ const TABS: Array<{ id: TabId; label: string }> = [
 ];
 
 interface AppHeaderProps extends PeriodPickerProps {
+  usuario: UsuarioMenu;
   tab: TabId;
   onTab: (t: TabId) => void;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ tab, onTab, ...period }) => (
+export const AppHeader: React.FC<AppHeaderProps> = ({ tab, onTab, usuario, ...period }) => (
   <header className="sticky top-0 z-40 bg-surface border-b border-line">
     <div className="max-w-[1200px] mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-3">
       <div className="flex items-center gap-3 min-w-0">
@@ -24,7 +28,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ tab, onTab, ...period }) =
           <span className="hidden sm:block text-xs text-muted">Qualidade do atendimento</span>
         </div>
       </div>
-      <PeriodPicker {...period} />
+      <div className="flex items-center gap-2 sm:gap-3">
+        <PeriodPicker {...period} />
+        <UserMenu usuario={usuario} />
+      </div>
     </div>
 
     <nav aria-label="Seções" className="max-w-[1200px] mx-auto px-2 sm:px-3 flex">

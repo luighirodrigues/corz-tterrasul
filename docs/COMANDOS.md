@@ -17,8 +17,11 @@ Este guia explica todos os comandos do `package.json` e diz o que rodar, e quand
 | Quando | Comando | O que atualiza |
 |---|---|---|
 | **Todo dia, de madrugada** (agendado) | `pnpm daily` | Traz da FLW as conversas e os negócios do CRM, recalcula os indicadores e analisa com IA as conversas novas. |
-| **Quinta de manhã** (agendado) | `pnpm publish:weekly` | Publica o relatório da semana que acabou de fechar. |
-| **Dia 2 de cada mês** (agendado), depois do `daily` | `pnpm publish:monthly` | Publica o relatório do mês que acabou de fechar. |
+| **Todo dia, no fim da tarde** (agendado) | `pnpm daily -- --email` | O mesmo, e depois manda o **resumo do dia** (hoje, até a hora do sync) para quem marcou "Diário". |
+| **Quinta de manhã** (agendado) | `pnpm publish:weekly -- --email` | Publica o relatório da semana que acabou de fechar e manda o resumo semanal. |
+| **Dia 2 de cada mês** (agendado), depois do `daily` | `pnpm publish:monthly -- --email` | Publica o relatório do mês que acabou de fechar e manda o resumo mensal. |
+
+**E-mail só com `--email`.** Nenhum comando manda e-mail sozinho: o `daily`, o `publish:weekly`, o `publish:monthly` e o `pipeline` só enviam com a flag `--email`. Assim a linha do agendamento diz o que ela manda, e rodar um comando à mão para testar não escreve para todo mundo.
 
 O `daily` precisa rodar **antes** dos dois `publish`: a publicação confere se o sync e a análise estão em dia e, se não estiverem, recusa publicar (veja §3, "trava").
 
@@ -66,7 +69,13 @@ Todos estão no `package.json` e chamam `src/cli.ts`.
 
 ### `pnpm daily`
 
-Rotina diária: sync de sessões e cards, indicadores das conversas alteradas e análise por IA (Job D). **Agende de madrugada.** Não gera relatório. Não aceita opções: usa o modo incremental.
+Rotina diária: sync de sessões e cards, indicadores das conversas alteradas e análise por IA (Job D). **Agende de madrugada.** Não gera relatório. Usa o modo incremental.
+
+| Opção | O que faz |
+|---|---|
+| `--email` | Depois da análise, manda o **resumo do dia** (hoje, até a hora do sync) para quem tem "Diário" marcado em **Usuários**. Agende uma segunda rodada do `daily` no **fim da tarde** com esta flag; a da madrugada fica sem. Rodar de novo no mesmo dia não reenvia. Um escopo sem nota no dia fica fora do e-mail, e quem fica sem nenhum bloco (domingo, feriado) não recebe. |
+
+Um problema no envio não desfaz o sync nem a análise: aparece no terminal e o comando termina com código 1, para o agendamento acusar. Com `--email` e sem `SMTP_HOST`, o comando faz o resto, avisa "Envio de e-mail desligado: configure SMTP_HOST" e também termina com código 1.
 
 ### `pnpm job:sync`
 
@@ -123,15 +132,34 @@ Publica os relatórios de uma janela (Job E): agrega as notas, chama a IA do est
 
 ### `pnpm publish:weekly`
 
-Publica a **última semana encerrada** (mesma coisa que `job:report` sem opções). **Agende na quinta de manhã**, depois do `daily`. A semana vai de quarta a terça.
+Publica a **última semana encerrada** (mesma coisa que `job:report` sem opções). **Agende na quinta de manhã**, depois do `daily`. A semana vai de quarta a terça. Com `--email`, envia no fim o **resumo semanal** de cada pessoa que o marcou (veja `pnpm email:resumos`); sem a flag, só publica. Com `--dry-run` e `--correct` nunca envia.
 
 ### `pnpm publish:monthly`
 
-Publica o **último mês encerrado**. **Agende no dia 2 de cada mês**, depois do `daily`. O mês que começa antes do `GO_LIVE_AT` sai marcado como parcial.
+Publica o **último mês encerrado**. **Agende no dia 2 de cada mês**, depois do `daily`. O mês que começa antes do `GO_LIVE_AT` sai marcado como parcial. Com `--email`, envia também o resumo mensal no fim.
+
+### `pnpm email:resumos`
+
+Envia o **resumo por e-mail** de um dia, de uma semana ou de um mês **já publicado**. O `daily`, o `publish:weekly` e o `publish:monthly` já chamam este envio quando rodam com `--email`, então só use o comando à mão para **repetir** (quando o servidor de e-mail falhou no meio) ou **testar**.
+
+| Opção | O que faz |
+|---|---|
+| `--day AAAA-MM-DD`, `--week AAAA-MM-DD` ou `--month AAAA-MM` | O dia (calculado na hora, com os números daquele momento), a semana (qualquer data dentro dela) ou o mês. Sem nenhuma das três, a última semana encerrada. |
+| `--dry-run` | Não envia nem grava no banco: salva os e-mails como HTML em `reports/emails/<período>/<e-mail>.html` para você abrir no navegador (em 390 px de largura para ver o celular). |
+| `--para fulano@empresa.com.br` | Só para esta pessoa. |
+| `--reenviar` | Manda de novo para quem já recebeu (o padrão é pular quem já recebeu). |
+
+Cada pessoa ativa recebe **um** e-mail por período, com um bloco para cada escopo que ela acompanha (marcados em **Usuários**, junto com a frequência: Diário, Semanal e Mensal; o comando só manda para quem marcou a frequência do período). Escopo sem conteúdo no período fica fora; se nenhum tiver conteúdo, a pessoa não recebe. No fim o comando imprime `Enviados: N · Sem nada para mandar: N · Erros: N`, com o e-mail e o motivo de cada erro. Rodar de novo manda só para quem ainda não recebeu ou deu erro. A correção de um relatório já publicado (`--correct`) **não** reenvia; se precisar, use `--reenviar`.
+
+Precisa de `SMTP_HOST`, `EMAIL_FROM` e `APP_URL` (veja o `.env.example`). Sem `SMTP_HOST` o envio fica desligado.
+
+### `pnpm email:teste`
+
+`pnpm email:teste -- --para fulano@empresa.com.br` manda um e-mail simples ("O envio de e-mail do painel está funcionando.") para conferir o servidor de e-mail. Se falhar, mostra o erro do servidor por extenso. Não usa o banco nem a FLW.
 
 ### `pnpm pipeline`
 
-Faz tudo de uma vez: sync de sessões e cards, análise por IA e publicação da janela. Aceita as opções do `job:report` (`--week`, `--month`, `--dry-run`...). Útil para a primeira carga ou para refazer uma semana inteira; no dia a dia, use `daily` e `publish:*`.
+Faz tudo de uma vez: sync de sessões e cards, análise por IA e publicação da janela. Aceita as opções do `job:report` (`--week`, `--month`, `--dry-run`...) e o `--email` (sem ele não envia e-mail). Útil para a primeira carga ou para refazer uma semana inteira; no dia a dia, use `daily` e `publish:*`.
 
 ### `pnpm config:lost-reasons`
 
@@ -154,7 +182,9 @@ Lista os motivos de perda cadastrados em cada painel do CRM (só lê da FLW, nã
 |---|---|
 | `pnpm web` ou `pnpm web:dev` | Sobe a tela em modo desenvolvimento, em http://localhost:3000 (use `localhost`, não `127.0.0.1`). Recarrega sozinho quando você muda o código. |
 | `pnpm web:build` | Gera a versão de produção da tela (o Dockerfile faz isso). Serve também para conferir se o código compila. |
-| `pnpm web:start` | Serve a versão gerada pelo `web:build`, em 127.0.0.1:3000. Em produção a tela exige `REPORT_BASIC_AUTH_USER` e `REPORT_BASIC_AUTH_PASS`; sem elas, responde 503. |
+| `pnpm web:start` | Serve a versão gerada pelo `web:build`, em 127.0.0.1:3000. A tela exige login: sem um usuário cadastrado ninguém entra (veja `pnpm user:admin`). |
+| `pnpm user:admin -- --email ana@empresa.com.br --nome "Ana"` | Cria o administrador do painel e imprime a **senha provisória** (mostrada só uma vez). Se o e-mail já existe, torna a pessoa administradora, reativa, gera outra senha provisória, desbloqueia e encerra as sessões: serve para **recuperar o acesso** se nenhum administrador conseguir entrar. `--senha <senha>` grava uma senha definitiva, sem troca obrigatória (para o ambiente de desenvolvimento). Os demais usuários são cadastrados pela tela **Usuários**. |
+| `docker compose up -d mailpit` | Sobe o Mailpit, um servidor de e-mail de mentira para o desenvolvimento: SMTP na porta 1025 e uma página com os e-mails recebidos em http://localhost:8025. No `.env`: `SMTP_HOST=localhost`, `SMTP_PORT=1025`. |
 | `pnpm prisma:generate` | Gera o cliente do Prisma a partir do `schema.prisma`. Rode depois de mudar o schema ou ao clonar o projeto. |
 | `pnpm prisma:deploy` | Aplica as migrations que faltam no banco. É o que o container faz ao subir. Use no dev para testar o mesmo caminho do servidor. |
 | `pnpm prisma:migrate` | Só no **dev**: cria uma migration nova a partir das mudanças no schema. **Nunca no servidor.** |
@@ -182,7 +212,7 @@ Lista os motivos de perda cadastrados em cada painel do CRM (só lê da FLW, nã
 4. `pnpm job:stage1 -- --limit 50` para testar a IA e o custo; depois `pnpm job:stage1` para o resto.
 5. `pnpm job:report -- --week AAAA-MM-DD --dry-run`, leia o rascunho e então publique: `pnpm job:report -- --week AAAA-MM-DD`. Repita para as semanas passadas, da mais antiga para a mais nova.
 6. `pnpm job:report -- --month AAAA-MM` para cada mês passado (o primeiro sai parcial).
-7. Agende `pnpm daily`, `pnpm publish:weekly` e `pnpm publish:monthly` como na §1.
+7. Agende `pnpm daily`, `pnpm daily -- --email`, `pnpm publish:weekly -- --email` e `pnpm publish:monthly -- --email` como na §1.
 
 Para um banco que já existe e recebe migrations novas, siga `docs/DEPLOY_EASYPANEL.md`, §5.
 
@@ -197,5 +227,6 @@ Para um banco que já existe e recebe migrations novas, siga `docs/DEPLOY_EASYPA
 | Lista de conversas vazia, mas há conversas na FLW | Não há análise na versão atual do prompt | `pnpm job:stage1`. |
 | Indicadores do período personalizado zerados ou incompletos | Conversas ainda marcadas como desatualizadas | `pnpm job:metrics`; confira `metrics_stale` = 0. |
 | Equipes não aparecem | `TEAM_GROUPS` vazio ou equipes ainda não sincronizadas | Configure a variável e rode `pnpm job:sync`. |
-| Tela responde 503 em produção | Faltam `REPORT_BASIC_AUTH_USER` e `REPORT_BASIC_AUTH_PASS` | Defina as duas no EasyPanel. |
+| Ninguém consegue entrar no painel | Não há administrador ativo, ou a senha foi esquecida | No terminal do serviço: `pnpm user:admin -- --email <e-mail> --nome "<nome>"` e entre com a senha provisória. |
+| Entrar funciona no desenvolvimento e falha no servidor | O Next recusa a ação quando o domínio de quem acessa não bate com o que chega ao app | Ponha o domínio em `experimental.serverActions.allowedOrigins` no `next.config.mjs`. |
 | A OpenAI deu erro ou o custo estourou o teto | Limite de `OPENAI_MAX_USD_PER_RUN` ou falha de rede | Rode `pnpm job:stage1` de novo: ele retoma de onde parou. |

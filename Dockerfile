@@ -25,5 +25,5 @@ ENV PORT=3000
 EXPOSE 3000
 
 # Aplica as migrations e sobe a tela. Escuta em 0.0.0.0 (dentro do container).
-# Em produção a tela exige REPORT_BASIC_AUTH_USER/PASS; sem elas responde 503.
+# A tela exige login (e-mail e senha). O 1º administrador sai de `pnpm user:admin`, no terminal do serviço.
 CMD ["sh", "-c", "pnpm prisma migrate deploy && pnpm next start -H 0.0.0.0 -p ${PORT}"]

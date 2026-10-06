@@ -40,6 +40,18 @@ const envSchema = z.object({
   TEAM_GROUPS: z.string().default(""),
   IGNORED_TEAMS: z.string().default(""),
   CRITERION_MIN_COVERAGE: z.coerce.number().min(0).max(1).default(0.3),
+  // Resumo por e-mail. Sem SMTP_HOST o envio fica desligado. APP_URL é o endereço público do painel (o terminal não tem como descobrir).
+  SMTP_HOST: z.string().default(""),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  // true = TLS direto (porta 465); false = STARTTLS quando o servidor oferece (587) ou sem criptografia (Mailpit).
+  SMTP_SECURE: z
+    .string()
+    .default("")
+    .transform((v) => /^(1|true|sim|yes)$/i.test(v.trim())),
+  SMTP_USER: z.string().default(""),
+  SMTP_PASS: z.string().default(""),
+  EMAIL_FROM: z.string().default(""),
+  APP_URL: z.string().default(""),
 });
 
 export const env = envSchema.parse(process.env);

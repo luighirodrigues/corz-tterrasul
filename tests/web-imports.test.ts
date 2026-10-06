@@ -18,6 +18,13 @@ const ENTRIES = [
   "app/api/pipeline/route.ts",
   "app/page.tsx",
   "app/status/page.tsx",
+  "app/login/page.tsx",
+  "app/login/actions.ts",
+  "app/trocar-senha/page.tsx",
+  "app/trocar-senha/actions.ts",
+  "app/usuarios/page.tsx",
+  "app/usuarios/actions.ts",
+  "proxy.ts",
 ];
 
 const IMPORT_RE = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;

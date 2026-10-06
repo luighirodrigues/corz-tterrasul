@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import type { ReportItem } from "@/lib/types";
 import { fmtNota } from "@/lib/format";
 import { nomeEscopo } from "@/lib/labels";
+import { temConteudo } from "@/domain/report-scopes";
 
 interface ScopeMenuProps {
   reports: ReportItem[];
@@ -19,13 +20,6 @@ const GRUPOS = [
   { tipo: "equipe", label: "Equipes", nota: "Grupos de atendentes" },
   { tipo: "painel", label: "Painéis do CRM", nota: "Conversas ligadas aos negócios de cada painel" },
 ] as const;
-
-/** Um escopo sem nota, sem conversas e sem negócios no CRM não tem o que mostrar: sai do menu. */
-const temConteudo = (r: ReportItem) => {
-  if (r.scopeType === "geral" || r.notaGeral != null || r.sinteticos.n > 0) return true;
-  const f = r.funil;
-  return !!f && f.open + f.won + f.lost > 0;
-};
 
 export const ScopeMenu: React.FC<ScopeMenuProps> = ({ reports, selectedId, onSelect, title }) => {
   const [open, setOpen] = useState(false);

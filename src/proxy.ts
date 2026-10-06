@@ -1,34 +1,36 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, VOLTA_HEADER, sessionCookieOptions } from "@/auth/constants";
 
 /**
- * Basic Auth em todas as rotas (tela e /api). As telas e a API expõem conversas de clientes.
- * Sem REPORT_BASIC_AUTH_USER/PASS configurados, só libera em desenvolvimento.
+ * Checagem rápida em toda requisição: só olha se o cookie de sessão existe, sem consultar o banco (o proxy roda
+ * até nas de pré-carregamento). Quem valida a sessão de verdade é `src/auth/dal.ts`, em cada página, rota e ação.
+ * Livre: /login, /_next/* e o favicon.
  */
 export function proxy(request: NextRequest) {
-  const user = process.env.REPORT_BASIC_AUTH_USER;
-  const pass = process.env.REPORT_BASIC_AUTH_PASS;
+  const { pathname, search } = request.nextUrl;
+  if (pathname === "/login" || pathname.startsWith("/_next/")) return NextResponse.next();
 
-  if (!user || !pass) {
-    if (process.env.NODE_ENV === "production") {
-      return new NextResponse("Autenticação não configurada.", { status: 503 });
-    }
-    return NextResponse.next();
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const api = pathname.startsWith("/api/");
+
+  if (!token) {
+    if (api) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    // O Next exige endereço completo no redirecionamento. Atrás do proxy do EasyPanel, o endereço público
+    // vem nos cabeçalhos x-forwarded-*; o `request.url` pode trazer o host interno.
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host;
+    const proto = request.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? request.nextUrl.protocol.replace(":", "");
+    return NextResponse.redirect(`${proto}://${host}/login?volta=${encodeURIComponent(pathname + search)}`);
   }
 
-  const header = request.headers.get("authorization") ?? "";
-  if (header.startsWith("Basic ")) {
-    try {
-      const [u, ...rest] = atob(header.slice(6)).split(":");
-      if (u === user && rest.join(":") === pass) return NextResponse.next();
-    } catch {
-      // cai no 401
-    }
-  }
+  // O login volta para a página que a pessoa pediu quando a sessão não vale mais.
+  const headers = new Headers(request.headers);
+  headers.set(VOLTA_HEADER, pathname + search);
+  const response = NextResponse.next({ request: { headers } });
 
-  return new NextResponse("Autenticação necessária.", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Qualidade FLW"' },
-  });
+  // Cada uso renova o prazo do cookie (o do banco é renovado em `getCurrentUser`). Ações de servidor são POST e ficam de fora,
+  // para não brigar com o cookie que "Sair" apaga.
+  if (request.method === "GET" && !api) response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  return response;
 }
 
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeApi } from "@/auth/dal";
 import { prisma } from "@/db/prisma";
 import { parseTipo } from "@/lib/reports-loader";
 
@@ -7,6 +8,8 @@ import { parseTipo } from "@/lib/reports-loader";
  * publicada (nunca recalculada). Um ponto por período; semanas e meses não se misturam.
  */
 export async function GET(request: Request) {
+  const auth = await authorizeApi();
+  if (auth instanceof Response) return auth;
   const { searchParams } = new URL(request.url);
   const scopeType = searchParams.get("scopeType");
   const scopeId = searchParams.get("scopeId");

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 import { fmtDiaMes, fmtNota, fmtQtd } from "@/lib/format";
 import { scoreStatus, TONE_DOT } from "@/lib/labels";
 
@@ -30,7 +31,7 @@ export const WeeksOfMonthBlock: React.FC<WeeksOfMonthBlockProps> = ({ mesInicio,
   useEffect(() => {
     let ativo = true;
     setSemanas(null);
-    fetch(`/api/reports/weeks?period=${encodeURIComponent(mesInicio)}&scopeType=${scopeType}&scopeId=${encodeURIComponent(scopeId)}`)
+    apiFetch(`/api/reports/weeks?period=${encodeURIComponent(mesInicio)}&scopeType=${scopeType}&scopeId=${encodeURIComponent(scopeId)}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => ativo && setSemanas(d))
       .catch(() => ativo && setSemanas([]));
