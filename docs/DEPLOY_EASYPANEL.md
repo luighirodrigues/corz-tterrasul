@@ -34,6 +34,7 @@ As tabelas são criadas sozinhas: ao subir, o container roda `prisma migrate dep
 | `SMTP_HOST` `SMTP_PORT` `SMTP_SECURE` `SMTP_USER` `SMTP_PASS` | servidor de e-mail do resumo semanal e mensal. Porta 587 (STARTTLS) ou 465 com `SMTP_SECURE=true`; a 25 costuma ser bloqueada. Sem `SMTP_HOST` o envio fica desligado |
 | `EMAIL_FROM` | remetente, ex.: `Tterrasul Qualidade <qualidade@tterrasul.com.br>`. Precisa ser do domínio do servidor de e-mail, com **SPF e DKIM** configurados, senão os e-mails caem no spam |
 | `APP_URL` | endereço público do painel, **com `https://`** e sem barra no fim. É o que o botão "Abrir o resumo" abre |
+| `JOBS_TOKEN` | libera o disparo dos comandos por HTTP (§3, "Agendamento por serviço externo"). Mínimo de 32 caracteres; gere com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Vazio = desligado |
 
 As demais (janela, timeouts, cobertura mínima...) têm padrão; veja `.env.example`.
 
@@ -72,6 +73,23 @@ Agende `pnpm publish:monthly` no **dia 2 de cada mês**, depois do `daily`. Ele 
 ```
 
 **Fuso do agendamento.** O cron segue o relógio do servidor, que costuma estar em UTC. Com a linha dizendo 18h e o servidor em UTC, o envio sai às 15h de Brasília: ajuste o horário (18h de Brasília = 21h UTC). O "hoje" do e-mail usa o fuso do painel (`TIMEZONE`), então o dia continua certo; só a hora muda. Evite horários perto da meia-noite, que podem cair no dia seguinte e mandar um resumo quase vazio. Deixe os horários separados: se outro comando estiver rodando, o `daily -- --email` falha na hora e não envia (`pnpm email:resumos -- --day AAAA-MM-DD` repete o envio).
+
+### Agendamento por serviço externo
+
+Em vez do cron, outro serviço (agendador, n8n, GitHub Actions...) pode chamar um endereço do painel para cada linha acima. As opções são as flags, sem os traços, e o token vai no cabeçalho:
+
+```
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/daily"          # pnpm daily
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/daily?email"    # pnpm daily -- --email
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/weekly?email"   # pnpm publish:weekly -- --email
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/monthly?email"  # pnpm publish:monthly -- --email
+```
+
+1. Gere o token e ponha em `JOBS_TOKEN` nas variáveis do serviço (§2). Sem a variável, os endereços respondem 503.
+2. Depois do deploy, confira de fora: sem o cabeçalho a resposta é 401, e com uma opção errada (`/api/jobs/daily?emial`) é 400. Nos dois casos nada roda.
+3. Cadastre os quatro horários no serviço externo, no fuso dele. **Não crie as linhas de cron:** com os dois, cada comando roda duas vezes.
+4. A resposta volta na hora, com um id; o comando segue rodando no servidor. Acompanhe por `/api/jobs/execucoes/<id>` (mesmo cabeçalho) ou pelo log do serviço, nas linhas `[disparo ...]`. Detalhes e códigos de resposta em `docs/COMANDOS.md`, §8.
+5. Para trocar o token (vazou, ou alguém saiu), troque a variável e reinicie o serviço; o token antigo deixa de valer na hora.
 
 Entre com a senha provisória, crie a sua senha e cadastre os demais pela tela **Usuários**. Se nenhum administrador conseguir entrar, o mesmo comando gera outra senha provisória.
 

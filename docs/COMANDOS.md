@@ -2,7 +2,7 @@
 
 Este guia explica todos os comandos do `package.json` e diz o que rodar, e quando, para manter os dados atualizados.
 
-**Onde rodar:** no seu computador, na pasta do projeto, ou no **terminal do serviço no EasyPanel** (mesma imagem, mesmas variáveis de ambiente). Os comandos que falam com a FLW e a OpenAI precisam de `FLW_TOKEN`, `OPENAI_API_KEY` e `DATABASE_URL`.
+**Onde rodar:** no seu computador, na pasta do projeto, ou no **terminal do serviço no EasyPanel** (mesma imagem, mesmas variáveis de ambiente). O `daily` e os dois `publish` também podem ser disparados por outro serviço, pela internet (§8). Os comandos que falam com a FLW e a OpenAI precisam de `FLW_TOKEN`, `OPENAI_API_KEY` e `DATABASE_URL`.
 
 **Um job por vez:** os comandos de dados (`job:*`, `daily`, `pipeline`, `publish:*`) usam um lock no Postgres. Se outro estiver rodando, o comando avisa e sai sem fazer nada. Não faça deploy com um job aberto: o redeploy reinicia o container e mata o job.
 
@@ -22,6 +22,8 @@ Este guia explica todos os comandos do `package.json` e diz o que rodar, e quand
 | **Dia 2 de cada mês** (agendado), depois do `daily` | `pnpm publish:monthly -- --email` | Publica o relatório do mês que acabou de fechar e manda o resumo mensal. |
 
 **E-mail só com `--email`.** Nenhum comando manda e-mail sozinho: o `daily`, o `publish:weekly`, o `publish:monthly` e o `pipeline` só enviam com a flag `--email`. Assim a linha do agendamento diz o que ela manda, e rodar um comando à mão para testar não escreve para todo mundo.
+
+**Quem agenda:** o cron do servidor ou um serviço externo que chama os endereços da §8 (`/api/jobs/daily?email` faz o mesmo que `pnpm daily -- --email`). Nunca os dois: cada comando rodaria duas vezes.
 
 O `daily` precisa rodar **antes** dos dois `publish`: a publicação confere se o sync e a análise estão em dia e, se não estiverem, recusa publicar (veja §3, "trava").
 
@@ -230,3 +232,51 @@ Para um banco que já existe e recebe migrations novas, siga `docs/DEPLOY_EASYPA
 | Ninguém consegue entrar no painel | Não há administrador ativo, ou a senha foi esquecida | No terminal do serviço: `pnpm user:admin -- --email <e-mail> --nome "<nome>"` e entre com a senha provisória. |
 | Entrar funciona no desenvolvimento e falha no servidor | O Next recusa a ação quando o domínio de quem acessa não bate com o que chega ao app | Ponha o domínio em `experimental.serverActions.allowedOrigins` no `next.config.mjs`. |
 | A OpenAI deu erro ou o custo estourou o teto | Limite de `OPENAI_MAX_USD_PER_RUN` ou falha de rede | Rode `pnpm job:stage1` de novo: ele retoma de onde parou. |
+| O serviço externo recebe 401 ou 503 em `/api/jobs/...` | Token errado ou fora do cabeçalho (401); `JOBS_TOKEN` vazio ou curto (503) | Confira o cabeçalho `Authorization: Bearer <token>` e a variável no EasyPanel (§8). |
+
+---
+
+## 8. Disparar pela internet (HTTP)
+
+Outro serviço (agendador, n8n, GitHub Actions...) pode disparar os três comandos agendados com um `GET`, sem abrir o terminal. A rota roda o próprio comando no servidor, então o resultado é o mesmo do terminal: a mesma trava, o mesmo log e o mesmo código de saída.
+
+| Comando | Endereço | Opções aceitas |
+|---|---|---|
+| `pnpm daily` | `GET /api/jobs/daily` | `email` |
+| `pnpm publish:weekly` | `GET /api/jobs/weekly` | `week`, `month`, `dry-run`, `allow-incomplete`, `correct`, `reason`, `email` |
+| `pnpm publish:monthly` | `GET /api/jobs/monthly` | `dry-run`, `allow-incomplete`, `correct`, `reason`, `email` |
+
+**As opções são as flags, sem os traços,** na query: `--email` vira `?email`, `--week 2026-09-17` vira `?week=2026-09-17`, e várias se juntam com `&`. A flag sem valor liga com `?email`, `?email=1` ou `?email=true`; `=0` ou `=false` deixa de fora. O que cada uma faz está na §2.
+
+**Diferença do terminal:** uma opção que o comando não lê, ou um valor errado, é recusada (400) sem rodar nada. No terminal, a flag desconhecida é ignorada em silêncio, e um `--emial` rodaria o `daily` sem mandar e-mail.
+
+**Token:** o disparo só funciona com `JOBS_TOKEN` configurado (veja `docs/DEPLOY_EASYPANEL.md`, §2), enviado no cabeçalho `Authorization: Bearer <token>`. Token na URL não vale.
+
+```bash
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/daily"            # pnpm daily
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/daily?email"      # pnpm daily -- --email
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/weekly?email"     # pnpm publish:weekly -- --email
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/monthly?email"    # pnpm publish:monthly -- --email
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/weekly?week=2026-09-17&dry-run"
+curl -H "Authorization: Bearer $JOBS_TOKEN" "https://<domínio>/api/jobs/monthly?correct&reason=Sync%20atrasado"
+```
+
+**A resposta não espera o comando terminar** (o `daily` com IA leva minutos). A rota espera até 2 segundos: se o comando falhou nesse tempo, devolve o erro com a saída; senão, devolve 202 com o id:
+
+```json
+{ "id": "a1b2c3", "comando": "pnpm daily -- --email", "status": "rodando", "inicio": "2026-10-09T21:00:00.000Z", "acompanhar": "/api/jobs/execucoes/a1b2c3" }
+```
+
+Para acompanhar, `GET /api/jobs/execucoes/a1b2c3` com o mesmo cabeçalho devolve o `status` (`rodando`, `concluido` ou `erro`), o `codigo` de saída, o `fim` e as últimas 300 linhas da `saida`. O painel guarda as 20 últimas execuções, e a lista some quando o serviço reinicia. A saída também vai para o log do serviço no EasyPanel, com o prefixo `[disparo daily a1b2c3]`. Como no terminal, `status: "erro"` com `codigo: 1` aparece também quando o comando fez tudo mas o envio de e-mail falhou.
+
+| Resposta | Quando |
+|---|---|
+| 202 | O comando começou. Acompanhe pelo `acompanhar`. |
+| 400 | Opção desconhecida ou valor errado (`week` fora de AAAA-MM-DD, `month` fora de AAAA-MM, `week` e `month` juntos, `correct` sem `reason`, opção repetida). Nada rodou. |
+| 401 | Sem o cabeçalho ou com o token errado. |
+| 405 | Método diferente de `GET`. O `HEAD` também é recusado, para um monitor de disponibilidade não disparar o comando. |
+| 409 | Outro comando já está rodando, do terminal ou de outro disparo. |
+| 500 | O comando falhou nos primeiros 2 segundos. A resposta traz a saída. |
+| 503 | `JOBS_TOKEN` vazio ou com menos de 32 caracteres, ou o banco fora do ar. |
+
+Um redeploy mata o comando que estiver rodando, como mata o do terminal.

@@ -4,11 +4,12 @@ import { SESSION_COOKIE, VOLTA_HEADER, sessionCookieOptions } from "@/auth/const
 /**
  * Checagem rápida em toda requisição: só olha se o cookie de sessão existe, sem consultar o banco (o proxy roda
  * até nas de pré-carregamento). Quem valida a sessão de verdade é `src/auth/dal.ts`, em cada página, rota e ação.
- * Livre: /login, /_next/* e o favicon.
+ * Livre: /login, /_next/* e o favicon. Também /api/jobs/*, que outros serviços chamam sem login: quem confere é o
+ * token, na rota (`src/auth/job-token.ts`).
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  if (pathname === "/login" || pathname.startsWith("/_next/")) return NextResponse.next();
+  if (pathname === "/login" || pathname.startsWith("/_next/") || pathname.startsWith("/api/jobs/")) return NextResponse.next();
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const api = pathname.startsWith("/api/");

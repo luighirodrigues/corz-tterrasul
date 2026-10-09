@@ -19,10 +19,32 @@ const todos = arquivos(SRC).filter((f) => !f.includes(`${path.sep}generated${pat
 const ler = (f: string) => readFileSync(f, "utf-8");
 
 describe("controle de acesso", () => {
-  it("toda rota da API chama authorizeApi", () => {
+  it("toda rota da API chama authorizeApi, menos as de /api/jobs, que conferem o token", () => {
     const rotas = todos.filter((f) => /app\/api\/.*route\.ts$/.test(rel(f)));
-    expect(rotas.length).toBeGreaterThanOrEqual(7);
-    expect(rotas.filter((f) => !ler(f).includes("authorizeApi(")).map(rel)).toEqual([]);
+    expect(rotas.length).toBeGreaterThanOrEqual(11);
+    const jobs = (f: string) => rel(f).startsWith("app/api/jobs/");
+    expect(rotas.filter(jobs).map(rel)).toEqual(
+      expect.arrayContaining([
+        "app/api/jobs/daily/route.ts",
+        "app/api/jobs/weekly/route.ts",
+        "app/api/jobs/monthly/route.ts",
+        "app/api/jobs/execucoes/[id]/route.ts",
+      ])
+    );
+    expect(rotas.filter((f) => !ler(f).includes(jobs(f) ? "authorizeJobToken(" : "authorizeApi(")).map(rel)).toEqual([]);
+  });
+
+  it("o proxy só deixa passar sem cookie o /login, o /_next e o /api/jobs", () => {
+    const proxy = ler(path.join(SRC, "proxy.ts"));
+    const livres = proxy.match(/^\s*if \(pathname === "\/login".*return NextResponse\.next\(\);$/m)?.[0] ?? "";
+    expect(livres).toContain('pathname.startsWith("/api/jobs/")');
+    expect([...livres.matchAll(/pathname(?: === |\.startsWith\()"([^"]+)"/g)].map((m) => m[1])).toEqual(["/login", "/_next/", "/api/jobs/"]);
+  });
+
+  it("as rotas que disparam comandos não deixam o HEAD rodar o GET", () => {
+    for (const n of ["daily", "weekly", "monthly"]) {
+      expect(ler(path.join(SRC, "app", "api", "jobs", n, "route.ts"))).toMatch(/^export const HEAD = metodoNaoPermitido;$/m);
+    }
   });
 
   it("toda página, fora do login, chama requireUser ou requireAdmin", () => {

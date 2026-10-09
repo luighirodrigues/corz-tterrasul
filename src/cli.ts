@@ -13,7 +13,7 @@ import { ensureTenant, panelConfigFromEnv } from "./domain/tenant.js";
 import { PANEL_KEYS, resolvePanelIds, type PanelKey } from "./domain/panels.js";
 import { lastClosedMonth, lastClosedPeriod, monthKey, parseMonth, periodContaining, type Period } from "./domain/period.js";
 import { resolveScopeTitle } from "./domain/scope-title.js";
-import { withAdvisoryLock } from "./domain/lock.js";
+import { TRAVA_JOBS, withAdvisoryLock } from "./domain/lock.js";
 import { FlwClient } from "./flw/flw-client.js";
 import { ensureAdmin } from "./auth/admin-cli.js";
 
@@ -364,6 +364,9 @@ Opções do report/pipeline:
   --dry-run              Não grava; gera rascunhos em ./reports/rascunho
   --allow-incomplete     Publica mesmo com a trava falhando (falhas vão para as limitações)
   --correct --reason "." Corrige relatório já publicado (guarda a versão anterior)
+
+Disparo por HTTP (daily, publish:weekly e publish:monthly), com JOBS_TOKEN no cabeçalho "Authorization: Bearer":
+  GET /api/jobs/daily?email = pnpm daily -- --email; o mesmo em /api/jobs/weekly e /api/jobs/monthly (docs/COMANDOS.md, §8)
 `);
       break;
     }
@@ -374,7 +377,7 @@ const argv = process.argv.slice(2);
 const command = argv[0] || "help";
 
 // Só um job por vez (evita chamadas duplicadas à FLW e à OpenAI). A ajuda não precisa de banco.
-(["help", "config:lost-reasons", "user:admin", "email:teste"].includes(command) || !argv.length ? run(command, argv) : withAdvisoryLock("flw-quality", () => run(command, argv)))
+(["help", "config:lost-reasons", "user:admin", "email:teste"].includes(command) || !argv.length ? run(command, argv) : withAdvisoryLock(TRAVA_JOBS, () => run(command, argv)))
   .catch((err) => {
     console.error("Erro na execução do CLI:", err.message ?? err);
     process.exit(1);

@@ -52,6 +52,8 @@ const envSchema = z.object({
   SMTP_PASS: z.string().default(""),
   EMAIL_FROM: z.string().default(""),
   APP_URL: z.string().default(""),
+  // Disparo do daily e dos publish por HTTP (/api/jobs/*), no cabeçalho `Authorization: Bearer`. Vazio = desligado.
+  JOBS_TOKEN: z.string().default(""),
 });
 
 export const env = envSchema.parse(process.env);
