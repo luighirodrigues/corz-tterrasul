@@ -11,6 +11,9 @@ export interface Period {
 
 const DEFAULT_TZ = "America/Sao_Paulo";
 
+/** Dia em que a semana começa, no padrão ISO (1 = segunda … 7 = domingo): semana de segunda a domingo. */
+export const DEFAULT_WEEK_START = 1;
+
 /** Dias de uma janela livre, no máximo (L-D4). */
 export const MAX_FREE_PERIOD_DAYS = 366;
 
@@ -38,7 +41,7 @@ function buildMonth(startLocal: DateTime): Period {
 }
 
 /** Janela semanal que contém `ref`. `weekStartIsoDay`: 1 = segunda … 3 = quarta … 7 = domingo. */
-export function periodContaining(ref: Date, tz: string = DEFAULT_TZ, weekStartIsoDay = 3): Period {
+export function periodContaining(ref: Date, tz: string = DEFAULT_TZ, weekStartIsoDay = DEFAULT_WEEK_START): Period {
   const local = zoned(ref, tz);
   const daysBack = (local.weekday - weekStartIsoDay + 7) % 7;
   return build(local.startOf("day").minus({ days: daysBack }));
@@ -49,7 +52,7 @@ export function previousPeriod(p: Period, tz: string = DEFAULT_TZ): Period {
 }
 
 /** Última janela já encerrada em `now`. */
-export function lastClosedPeriod(now: Date, tz: string = DEFAULT_TZ, weekStartIsoDay = 3): Period {
+export function lastClosedPeriod(now: Date, tz: string = DEFAULT_TZ, weekStartIsoDay = DEFAULT_WEEK_START): Period {
   return previousPeriod(periodContaining(now, tz, weekStartIsoDay), tz);
 }
 
@@ -89,9 +92,9 @@ export function previousOf(p: Period, tz: string = DEFAULT_TZ): Period {
 
 /**
  * Semanas que pertencem ao mês: a semana conta no mês em que cai o seu 4º dia (D7).
- * Com semana de quarta a terça, é o sábado. Um mês tem 4 ou 5 semanas.
+ * Com semana de segunda a domingo, é a quinta (a regra das semanas ISO). Um mês tem 4 ou 5 semanas.
  */
-export function weeksOfMonth(mes: Period, tz: string = DEFAULT_TZ, weekStartIsoDay = 3): Period[] {
+export function weeksOfMonth(mes: Period, tz: string = DEFAULT_TZ, weekStartIsoDay = DEFAULT_WEEK_START): Period[] {
   const monthStart = DateTime.fromJSDate(mes.start, { zone: tz });
   const monthEnd = DateTime.fromJSDate(mes.end, { zone: tz });
   const weeks: Period[] = [];

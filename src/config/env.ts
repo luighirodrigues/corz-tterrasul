@@ -25,7 +25,8 @@ const envSchema = z.object({
   DEFAULT_TENANT_ID: z.string().default("tterrasul"),
   DEFAULT_TENANT_NAME: z.string().default("Tterrasul"),
   TIMEZONE: z.string().default("America/Sao_Paulo"),
-  PERIOD_WEEK_START: z.coerce.number().int().min(1).max(7).default(3),
+  // Dia em que a semana dos relatórios começa (ISO: 1 = segunda … 7 = domingo). Trocar exige refazer as semanas publicadas.
+  PERIOD_WEEK_START: z.coerce.number().int().min(1).max(7).default(1),
   GO_LIVE_AT: z.string().default(""),
   PANEL_VENDAS_ID: z.string().default(""),
   PANEL_CAMPANHAS_ID: z.string().default(""),

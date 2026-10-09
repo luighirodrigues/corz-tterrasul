@@ -24,7 +24,7 @@ model Tenant {
   teamGroups         String?  @map("team_groups") // grupos de equipes da FLW: "Grupo: Equipe; Equipe | Outro: Equipe"
   ignoredTeams       String?  @map("ignored_teams") // equipes da FLW fora dos relatórios por equipe (nomes separados por ";")
   timezone           String   @default("America/Sao_Paulo")
-  periodWeekStart    Int      @default(3) @map("period_week_start") // ISO: 3 = quarta
+  periodWeekStart    Int      @default(3) @map("period_week_start") // ISO: 1 = segunda … 7 = domingo; vem de PERIOD_WEEK_START a cada comando (o default da coluna não é usado)
   goLiveAt           DateTime? @map("go_live_at")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")

@@ -3,7 +3,7 @@ import { evaluateGate } from "../src/domain/publish-gate.js";
 import { periodContaining } from "../src/domain/period.js";
 
 const TZ = "America/Sao_Paulo";
-const period = periodContaining(new Date("2026-09-17T12:00:00-03:00"), TZ); // 16/09–22/09
+const period = periodContaining(new Date("2026-09-17T12:00:00-03:00"), TZ); // 14/09–20/09 (segunda a domingo)
 const now = new Date("2026-09-24T09:00:00-03:00");
 const after = new Date("2026-09-23T04:00:00-03:00");
 const ok = { period, now, lastSessionsSync: after, lastCardsSync: after, pendingAnalyses: 0 };

@@ -55,7 +55,7 @@ pnpm job:report -- --week 2026-09-17 --dry-run     # rascunho, não grava
 pnpm job:report -- --week 2026-09-17               # publica a janela (exige a trava do §16)
 pnpm daily                                          # sync incremental + IA estágio 1
 pnpm daily -- --email                               # o mesmo, e manda o resumo de hoje para quem marcou "Diário"
-pnpm publish:weekly -- --email                      # publica a última janela encerrada e manda o resumo semanal
+pnpm publish:weekly -- --email                      # publica a última semana encerrada (segunda a domingo) e manda o resumo semanal
 pnpm publish:monthly -- --email                     # publica o último mês encerrado (dia 2 de cada mês, depois do daily) e manda o resumo mensal
 pnpm job:report -- --month 2026-09 --dry-run        # rascunho do mês, não grava
 pnpm job:metrics                                    # recalcula os indicadores gravados em cada conversa (--all refaz todas)
@@ -68,7 +68,7 @@ Agende `pnpm publish:monthly` no **dia 2 de cada mês**, depois do `daily`. Ele 
 ```
 0 5 * * *   pnpm daily                        # madrugada: completa o dia anterior
 0 18 * * *  pnpm daily -- --email             # fim da tarde: atualiza e manda o resumo de hoje
-0 8 * * 4   pnpm publish:weekly -- --email    # quinta de manhã
+0 8 * * 1   pnpm publish:weekly -- --email    # segunda de manhã (a semana vai de segunda a domingo)
 0 8 2 * *   pnpm publish:monthly -- --email   # dia 2
 ```
 
@@ -143,3 +143,16 @@ O container roda `prisma migrate deploy` toda vez que sobe, então migrações n
 4. Teste antes de agendar: `pnpm email:resumos -- --day <hoje> --dry-run` (grava o HTML em `reports/emails/dia-<hoje>/`) e depois `pnpm email:resumos -- --day <hoje> --para <seu e-mail>`.
 5. No primeiro dia, olhe o terminal da rodada com `--email` e a página `/status` ("Dia 06/10" aparece ao lado das semanas e dos meses).
 6. Reversão: o `down.sql` da migração apaga as três colunas e os registros de envio diário. Volte também o código para o commit anterior.
+
+### Semana de segunda a domingo (troca de 09/10/2026)
+
+A semana dos relatórios passou de quarta a terça para **segunda a domingo** (`PERIOD_WEEK_START=1`, o novo padrão). O mês não muda: continua do dia 1 ao último dia. As semanas já publicadas no formato antigo são apagadas e publicadas de novo por um comando que não aparece na ajuda.
+
+1. Antes do deploy, olhe `PERIOD_WEEK_START` nas variáveis do serviço: **apague a variável ou ponha `1`**. Com `3`, a semana continua de quarta a terça.
+2. Backup (`pg_dump -Fc`): o passo 5 apaga relatórios publicados. Deploy sem job rodando.
+3. Rode depois do `daily` do dia (a última semana só publica com o sync em dia).
+4. Ensaio, que não altera nada: `npx tsx src/cli.ts semanas:refazer`. Confira a primeira linha ("Semana configurada: começa na segunda-feira"), as semanas de quarta a apagar e as semanas de segunda a publicar.
+5. Para valer: `npx tsx src/cli.ts semanas:refazer --confirmar`. Apaga as semanas antigas (com as correções delas) e publica todas as semanas de segunda a domingo, da mais antiga até a última encerrada. Chama a IA, uns 21 escopos por semana. Não manda e-mail e não mexe nos relatórios do mês. Se parar no meio (trava de publicação, erro da IA), resolva o que ele apontar e rode de novo: ele continua de onde parou. `--desde AAAA-MM-DD` muda a primeira semana; `--allow-incomplete` passa adiante para a publicação.
+6. Mude o agendamento do `publish:weekly` para **segunda de manhã**, depois do `daily` (no cron, `0 8 * * 1`; ou no serviço externo).
+7. Entre o deploy e o primeiro comando (o `daily` do passo 3 já basta), a tela ainda monta as "Semanas do mês" com a quarta: o dia de início fica gravado no banco e só muda quando um comando roda.
+8. Reversão: `PERIOD_WEEK_START=3` e o mesmo comando, que refaz as semanas de quarta a terça.

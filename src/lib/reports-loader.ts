@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import { prisma } from "@/db/prisma";
-import { monthContaining, weeksOfMonth } from "@/domain/period";
+import { DEFAULT_WEEK_START, monthContaining, weeksOfMonth } from "@/domain/period";
 import { resolveScopeTitle } from "@/domain/scope-title";
 import type { Granularidade, ReportItem, ScopeType, TipoPublicado } from "./types";
 import { loadAgentTeams, loadTeamGroupMap } from "./teams-loader";
@@ -153,7 +153,7 @@ export async function loadWeeksOfMonth(
     ? DateTime.fromISO(monthStart, { zone: tz }).plus({ hours: 12 }).toJSDate()
     : new Date(monthStart);
   if (isNaN(ref.getTime())) throw new Error("period inválido");
-  const weeks = weeksOfMonth(monthContaining(ref, tz), tz, tenant?.periodWeekStart ?? 3);
+  const weeks = weeksOfMonth(monthContaining(ref, tz), tz, tenant?.periodWeekStart ?? DEFAULT_WEEK_START);
 
   const rows = await prisma.periodReport.findMany({
     where: {

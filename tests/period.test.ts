@@ -17,28 +17,28 @@ import {
 const TZ = "America/Sao_Paulo"; // UTC-3, sem horário de verão desde 2019
 
 describe("period", () => {
-  it("terça 29/09/2026: janela aberta é 23/09–29/09; última fechada é 16/09–22/09", () => {
-    const now = new Date("2026-09-29T15:00:00-03:00");
+  it("sexta 09/10/2026: janela aberta é 05/10–11/10; última fechada é 28/09–04/10 (segunda a domingo)", () => {
+    const now = new Date("2026-10-09T15:00:00-03:00");
     const cur = periodContaining(now, TZ);
-    expect(cur.label).toBe("2026-09-23 a 2026-09-29");
+    expect(cur.label).toBe("2026-10-05 a 2026-10-11");
     expect(isClosed(cur, now)).toBe(false);
 
     const last = lastClosedPeriod(now, TZ);
-    expect(last.label).toBe("2026-09-16 a 2026-09-22");
-    expect(last.start.toISOString()).toBe("2026-09-16T03:00:00.000Z");
-    expect(last.end.toISOString()).toBe("2026-09-23T02:59:59.999Z");
+    expect(last.label).toBe("2026-09-28 a 2026-10-04");
+    expect(last.start.toISOString()).toBe("2026-09-28T03:00:00.000Z");
+    expect(last.end.toISOString()).toBe("2026-10-05T02:59:59.999Z");
   });
 
-  it("quinta 01/10/2026: última fechada é 23/09–29/09", () => {
-    const last = lastClosedPeriod(new Date("2026-10-01T09:00:00-03:00"), TZ);
-    expect(last.label).toBe("2026-09-23 a 2026-09-29");
+  it("segunda 12/10/2026 de manhã: a última fechada é a que terminou no domingo, 05/10–11/10", () => {
+    const last = lastClosedPeriod(new Date("2026-10-12T08:00:00-03:00"), TZ);
+    expect(last.label).toBe("2026-10-05 a 2026-10-11");
   });
 
-  it("quarta às 00:00 local já pertence à nova janela", () => {
-    const p = periodContaining(new Date("2026-09-23T00:00:00-03:00"), TZ);
-    expect(p.label).toBe("2026-09-23 a 2026-09-29");
-    const before = periodContaining(new Date("2026-09-22T23:59:59-03:00"), TZ);
-    expect(before.label).toBe("2026-09-16 a 2026-09-22");
+  it("segunda às 00:00 local já pertence à nova janela; domingo 23:59:59 ainda é da anterior", () => {
+    const p = periodContaining(new Date("2026-10-12T00:00:00-03:00"), TZ);
+    expect(p.label).toBe("2026-10-12 a 2026-10-18");
+    const before = periodContaining(new Date("2026-10-11T23:59:59-03:00"), TZ);
+    expect(before.label).toBe("2026-10-05 a 2026-10-11");
   });
 
   it("janelas consecutivas não se sobrepõem nem deixam lacuna", () => {
@@ -47,9 +47,11 @@ describe("period", () => {
     expect(prev.end.getTime() + 1).toBe(cur.start.getTime());
   });
 
-  it("respeita outro dia de início de semana (segunda)", () => {
-    const p = periodContaining(new Date("2026-09-29T12:00:00-03:00"), TZ, 1);
-    expect(p.label).toBe("2026-09-28 a 2026-10-04");
+  it("respeita outro dia de início de semana (quarta a terça)", () => {
+    const now = new Date("2026-09-29T15:00:00-03:00");
+    expect(periodContaining(now, TZ, 3).label).toBe("2026-09-23 a 2026-09-29");
+    expect(lastClosedPeriod(now, TZ, 3).label).toBe("2026-09-16 a 2026-09-22");
+    expect(periodContaining(new Date("2026-09-23T00:00:00-03:00"), TZ, 3).label).toBe("2026-09-23 a 2026-09-29");
   });
 
   it("dois cálculos no mesmo dia dão a mesma janela", () => {
@@ -102,7 +104,7 @@ describe("period: mês do calendário", () => {
 
   it("previousOf volta uma semana ou um mês, e recusa período livre", () => {
     const semana = periodContaining(new Date("2026-09-29T12:00:00-03:00"), TZ);
-    expect(previousOf(semana, TZ).label).toBe("2026-09-16 a 2026-09-22");
+    expect(previousOf(semana, TZ).label).toBe("2026-09-21 a 2026-09-27");
     expect(previousOf(parseMonth("2026-03", TZ), TZ).label).toBe("2026-02-01 a 2026-02-28");
     expect(() => previousOf({ ...semana, granularity: "livre" }, TZ)).toThrow();
   });
@@ -128,10 +130,10 @@ describe("period: semanas do mês (D7)", () => {
     for (let m = 1; m <= 12; m++) expect([4, 5]).toContain(starts(`2026-${String(m).padStart(2, "0")}`).length);
   });
 
-  it("respeita outro dia de início de semana (segunda)", () => {
-    const w = weeksOfMonth(parseMonth("2026-09", TZ), TZ, 1).map((x) => x.label.slice(0, 10));
-    // semana de segunda: o 4º dia é quinta
-    expect(w).toEqual(["2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21"]);
+  it("no padrão (segunda a domingo), o 4º dia é a quinta: setembro tem 31/08 a 21/09, e a de 28/09 fica em outubro", () => {
+    const w = (mes: string) => weeksOfMonth(parseMonth(mes, TZ), TZ).map((x) => x.label.slice(0, 10));
+    expect(w("2026-09")).toEqual(["2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21"]);
+    expect(w("2026-10")).toEqual(["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]);
   });
 });
 

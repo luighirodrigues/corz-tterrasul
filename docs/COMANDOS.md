@@ -18,7 +18,7 @@ Este guia explica todos os comandos do `package.json` e diz o que rodar, e quand
 |---|---|---|
 | **Todo dia, de madrugada** (agendado) | `pnpm daily` | Traz da FLW as conversas e os negócios do CRM, recalcula os indicadores e analisa com IA as conversas novas. |
 | **Todo dia, no fim da tarde** (agendado) | `pnpm daily -- --email` | O mesmo, e depois manda o **resumo do dia** (hoje, até a hora do sync) para quem marcou "Diário". |
-| **Quinta de manhã** (agendado) | `pnpm publish:weekly -- --email` | Publica o relatório da semana que acabou de fechar e manda o resumo semanal. |
+| **Segunda de manhã** (agendado), depois do `daily` | `pnpm publish:weekly -- --email` | Publica o relatório da semana que acabou de fechar (segunda a domingo) e manda o resumo semanal. |
 | **Dia 2 de cada mês** (agendado), depois do `daily` | `pnpm publish:monthly -- --email` | Publica o relatório do mês que acabou de fechar e manda o resumo mensal. |
 
 **E-mail só com `--email`.** Nenhum comando manda e-mail sozinho: o `daily`, o `publish:weekly`, o `publish:monthly` e o `pipeline` só enviam com a flag `--email`. Assim a linha do agendamento diz o que ela manda, e rodar um comando à mão para testar não escreve para todo mundo.
@@ -134,7 +134,7 @@ Publica os relatórios de uma janela (Job E): agrega as notas, chama a IA do est
 
 ### `pnpm publish:weekly`
 
-Publica a **última semana encerrada** (mesma coisa que `job:report` sem opções). **Agende na quinta de manhã**, depois do `daily`. A semana vai de quarta a terça. Com `--email`, envia no fim o **resumo semanal** de cada pessoa que o marcou (veja `pnpm email:resumos`); sem a flag, só publica. Com `--dry-run` e `--correct` nunca envia.
+Publica a **última semana encerrada** (mesma coisa que `job:report` sem opções). **Agende na segunda de manhã**, depois do `daily` da madrugada. A semana vai de segunda a domingo (`PERIOD_WEEK_START=1`); com `--week`, qualquer data dentro da semana serve (`--week 2026-10-09`, uma sexta, publica de 05/10 a 11/10). Com `--email`, envia no fim o **resumo semanal** de cada pessoa que o marcou (veja `pnpm email:resumos`); sem a flag, só publica. Com `--dry-run` e `--correct` nunca envia.
 
 ### `pnpm publish:monthly`
 

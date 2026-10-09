@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { env } from "./config/env.js";
 import { prisma } from "./db/prisma.js";
 import { runJobASyncSessions } from "./jobs/job-a-sync-sessions.js";
@@ -14,6 +15,7 @@ import { PANEL_KEYS, resolvePanelIds, type PanelKey } from "./domain/panels.js";
 import { lastClosedMonth, lastClosedPeriod, monthKey, parseMonth, periodContaining, type Period } from "./domain/period.js";
 import { resolveScopeTitle } from "./domain/scope-title.js";
 import { TRAVA_JOBS, withAdvisoryLock } from "./domain/lock.js";
+import { planoRefazerSemanas } from "./domain/refazer-semanas.js";
 import { FlwClient } from "./flw/flw-client.js";
 import { ensureAdmin } from "./auth/admin-cli.js";
 
@@ -73,7 +75,8 @@ async function enviarResumos(opcoes: JobFOptions): Promise<void> {
   }
 }
 
-async function publishPeriod(tenantId: string, args: string[], period: Period): Promise<void> {
+/** `avisarEmail: false` cala a dica do `--email` (no `semanas:refazer`, que nunca envia). */
+async function publishPeriod(tenantId: string, args: string[], period: Period, avisarEmail = true): Promise<void> {
   const dryRun = args.includes("--dry-run");
   const correct = args.includes("--correct");
   const allowIncomplete = args.includes("--allow-incomplete");
@@ -137,7 +140,7 @@ async function publishPeriod(tenantId: string, args: string[], period: Period): 
   // Resumo por e-mail: só com `--email` e só quando publicou de verdade. A correção de um relatório já publicado não reenvia.
   if (correct) return;
   if (!args.includes("--email")) {
-    console.log("\nResumos por e-mail não enviados (use --email para enviar).");
+    if (avisarEmail) console.log("\nResumos por e-mail não enviados (use --email para enviar).");
     return;
   }
   await enviarResumos({ tenantId, granularity: isMonth ? "mes" : "semana", periodStart: period.start });
@@ -155,6 +158,65 @@ async function resolveEmailPeriod(tenantId: string, args: string[]) {
   }
   const period = await resolveReportPeriod(tenantId, args);
   return { granularity: period.granularity === "mes" ? ("mes" as const) : ("semana" as const), periodStart: period.start, label: period.label };
+}
+
+/**
+ * Comando escondido (fora da ajuda, do package.json e do disparo por HTTP), para quando muda o dia em que a semana
+ * começa: apaga as semanas publicadas no formato antigo e publica de novo todas, da mais antiga até a última encerrada.
+ * Sem `--confirmar`, só mostra o que faria. Nunca manda e-mail e não mexe nos relatórios do mês.
+ *
+ *     npx tsx src/cli.ts semanas:refazer [--desde AAAA-MM-DD] [--allow-incomplete] [--confirmar]
+ */
+async function refazerSemanas(tenantId: string, args: string[]): Promise<void> {
+  const tenant = await ensureTenant(tenantId);
+  const tz = tenant.timezone;
+  const desdeArg = argValue(args, "--desde");
+  if (desdeArg !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(desdeArg)) throw new Error(`--desde inválido: ${desdeArg} (use AAAA-MM-DD)`);
+  const desde = desdeArg ? DateTime.fromISO(desdeArg, { zone: tz }).toJSDate() : undefined;
+
+  const publicadas = await prisma.periodReport.groupBy({
+    by: ["periodStart"],
+    where: { tenantId, granularity: "semana" },
+    _count: { _all: true },
+  });
+  const escopos = new Map(publicadas.map((p) => [p.periodStart.getTime(), p._count._all]));
+  const plano = planoRefazerSemanas({
+    publicadas: publicadas.map((p) => p.periodStart),
+    desde,
+    goLive: tenant.goLiveAt,
+    now: new Date(),
+    tz,
+    weekStart: tenant.periodWeekStart,
+  });
+
+  const dia = (d: Date) => DateTime.fromJSDate(d, { zone: tz }).setLocale("pt-BR").toFormat("ccc dd/MM/yyyy");
+  const comeca = DateTime.local({ zone: tz }).set({ weekday: tenant.periodWeekStart as 1 }).setLocale("pt-BR").toFormat("cccc");
+  console.log(`Semana configurada: começa na ${comeca} (PERIOD_WEEK_START=${tenant.periodWeekStart}).`);
+
+  console.log(`\nSemanas publicadas em outro formato, a apagar: ${plano.apagar.length}`);
+  for (const d of plano.apagar) console.log(`  - semana de ${dia(d)} (${escopos.get(d.getTime()) ?? 0} escopos)`);
+  console.log(`\nSemanas a publicar: ${plano.semanas.length} (as que já existem no formato atual são mantidas)`);
+  for (const s of plano.semanas) {
+    const ja = escopos.has(s.start.getTime()) ? " (já publicada)" : "";
+    console.log(`  - ${dia(s.start)} a ${dia(s.end)}${ja}`);
+  }
+
+  if (!args.includes("--confirmar")) {
+    console.log("\nNada foi alterado. Confira a lista e rode de novo com --confirmar para apagar e publicar.");
+    return;
+  }
+
+  if (plano.apagar.length) {
+    // As correções (period_report_revisions) saem junto, em cascata.
+    const r = await prisma.periodReport.deleteMany({ where: { tenantId, granularity: "semana", periodStart: { in: plano.apagar } } });
+    console.log(`\nApagados: ${r.count} relatórios semanais.`);
+  }
+  const publicar = args.includes("--allow-incomplete") ? ["--allow-incomplete"] : [];
+  for (const semana of plano.semanas) {
+    console.log(`\n--- Semana ${semana.label} ---`);
+    await publishPeriod(tenantId, publicar, semana, false);
+  }
+  console.log("\nSemanas refeitas. Nenhum e-mail foi enviado. Se parou no meio, rode de novo: ele continua de onde parou.");
 }
 
 async function run(command: string, args: string[]) {
@@ -267,6 +329,12 @@ async function run(command: string, args: string[]) {
       break;
     }
 
+    case "semanas:refazer": {
+      console.log("=== REFAZER AS SEMANAS PUBLICADAS ===");
+      await refazerSemanas(tenantId, args);
+      break;
+    }
+
     case "email:teste": {
       // Só fala com o servidor de e-mail: não precisa do banco nem da FLW.
       const para = argValue(args, "--para");
@@ -347,7 +415,7 @@ Comandos:
   daily           Rotina diária: sync incremental + IA estágio 1 (agende de madrugada)
                   Com --email, manda também o resumo de hoje para quem marcou "Diário" (agende no fim da tarde)
                   pnpm daily -- --email
-  publish:weekly  Publica a última janela encerrada (agende na quinta de manhã)  [--email]
+  publish:weekly  Publica a última semana encerrada, de segunda a domingo (agende na segunda de manhã, depois do daily)  [--email]
   publish:monthly Publica o último mês encerrado (agende no dia 2 de cada mês, depois do daily)  [--email]
   email:resumos   Envia (ou reenvia) os resumos por e-mail de um dia, de uma semana ou de um mês
                   pnpm email:resumos -- --day AAAA-MM-DD | --week YYYY-MM-DD | --month AAAA-MM [--dry-run] [--para fulano@...] [--reenviar]
