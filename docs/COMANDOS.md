@@ -238,7 +238,7 @@ Para um banco que já existe e recebe migrations novas, siga `docs/DEPLOY_EASYPA
 
 ## 8. Disparar pela internet (HTTP)
 
-Outro serviço (agendador, n8n, GitHub Actions...) pode disparar os três comandos agendados com um `GET`, sem abrir o terminal. A rota roda o próprio comando no servidor, então o resultado é o mesmo do terminal: a mesma trava, o mesmo log e o mesmo código de saída.
+Outro serviço (agendador, n8n, GitHub Actions...) pode disparar os três comandos agendados com um `GET`, sem abrir o terminal. O guia para passar à equipe que vai integrar, com todos os campos e exemplos, está em `docs/API_DISPARO_HTTP.md`. A rota roda o próprio comando no servidor, então o resultado é o mesmo do terminal: a mesma trava, o mesmo log e o mesmo código de saída.
 
 | Comando | Endereço | Opções aceitas |
 |---|---|---|
